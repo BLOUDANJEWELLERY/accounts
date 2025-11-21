@@ -22,6 +22,18 @@ interface Voucher {
   totalKWD: number;
 }
 
+// Define the type for signature pad ref based on the library's methods
+interface SignaturePadRef {
+  clear: () => void;
+  isEmpty: () => boolean;
+  toDataURL: (type?: string, quality?: any) => string;
+  getCanvas: () => HTMLCanvasElement;
+  getTrimmedCanvas: () => HTMLCanvasElement;
+  fromDataURL: (dataUrl: string) => void;
+  off: () => void;
+  on: () => void;
+}
+
 export default function VoucherSignature() {
   const router = useRouter();
   const { id } = router.query;
@@ -33,8 +45,8 @@ export default function VoucherSignature() {
   const [hasSalesSigned, setHasSalesSigned] = useState(false);
   const [hasCustomerSigned, setHasCustomerSigned] = useState(false);
 
-  const salesSignRef = useRef<any>(null);
-  const customerSignRef = useRef<any>(null);
+  const salesSignRef = useRef<SignaturePadRef | null>(null);
+  const customerSignRef = useRef<SignaturePadRef | null>(null);
 
   // Fetch voucher data
   useEffect(() => {
@@ -74,7 +86,7 @@ export default function VoucherSignature() {
     }
   };
 
-  const getSignatureData = (ref: React.RefObject<any>): string | null => {
+  const getSignatureData = (ref: React.RefObject<SignaturePadRef | null>): string | null => {
     if (!ref.current) {
       console.error("Signature ref not available");
       return null;
@@ -86,21 +98,33 @@ export default function VoucherSignature() {
         return null;
       }
       
-      // Alternative method to get signature data
-      const canvas = ref.current.getCanvas();
-      if (canvas && canvas.toDataURL) {
-        return canvas.toDataURL("image/png");
+      // Method 1: Try direct toDataURL first (most reliable)
+      try {
+        return ref.current.toDataURL("image/png");
+      } catch (error1) {
+        console.warn("Direct toDataURL failed:", error1);
       }
       
-      // Fallback: try the original method but with better error handling
+      // Method 2: Try getCanvas
+      try {
+        const canvas = ref.current.getCanvas();
+        if (canvas && canvas.toDataURL) {
+          return canvas.toDataURL("image/png");
+        }
+      } catch (error2) {
+        console.warn("getCanvas failed:", error2);
+      }
+      
+      // Method 3: Try getTrimmedCanvas as last resort
       try {
         return ref.current.getTrimmedCanvas().toDataURL("image/png");
-      } catch (trimmedError) {
-        console.warn("getTrimmedCanvas failed, using regular canvas:", trimmedError);
-        return ref.current.toDataURL("image/png");
+      } catch (error3) {
+        console.warn("getTrimmedCanvas failed:", error3);
       }
+      
+      return null;
     } catch (err) {
-      console.error("Error extracting signature:", err);
+      console.error("All signature extraction methods failed:", err);
       return null;
     }
   };
