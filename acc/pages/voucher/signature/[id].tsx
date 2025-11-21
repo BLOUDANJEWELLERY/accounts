@@ -1,7 +1,7 @@
 // pages/voucher/signature/[id].tsx
 import { useState, useRef, useEffect } from "react";
 import { useRouter } from "next/router";
-import * as SignatureCanvas from "react-signature-canvas";
+import SignatureCanvas from "react-signature-canvas";
 
 interface VoucherRow {
   description: string;
@@ -31,41 +31,54 @@ export default function VoucherSignature() {
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState("");
 
-  // Use SignatureCanvas.default to get the actual class instance
-  const salesSignRef = useRef<SignatureCanvas.default | null>(null);
-  const customerSignRef = useRef<SignatureCanvas.default | null>(null);
+  // Fix: Use the correct type for the ref
+  const salesSignRef = useRef<SignatureCanvas | null>(null);
+  const customerSignRef = useRef<SignatureCanvas | null>(null);
 
   // Fetch voucher data
- useEffect(() => {
-  if (!id) return;
+  useEffect(() => {
+    if (!id) return;
 
-  const fetchVoucher = async () => {
-    try {
-      setLoading(true); // move inside async function
-      const res = await fetch(`/api/voucher/${id}`);
-      const data: { voucher: Voucher } = await res.json();
-      setVoucher(data.voucher);
-    } catch (err) {
-      console.error(err);
-    } finally {
-      setLoading(false);
+    const fetchVoucher = async () => {
+      try {
+        setLoading(true);
+        const res = await fetch(`/api/voucher/${id}`);
+        const data: { voucher: Voucher } = await res.json();
+        setVoucher(data.voucher);
+      } catch (err) {
+        console.error(err);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchVoucher();
+  }, [id]);
+
+  const handleClear = (who: "sales" | "customer") => {
+    if (who === "sales") {
+      salesSignRef.current?.clear();
+    } else {
+      customerSignRef.current?.clear();
     }
   };
 
-  fetchVoucher();
-}, [id]);
-
-
-  const handleClear = (who: "sales" | "customer") => {
-    if (who === "sales") salesSignRef.current?.clear();
-    else customerSignRef.current?.clear();
-  };
-
-  const getSignatureData = (ref: React.RefObject<SignatureCanvas.default | null>): string | null => {
-    if (!ref.current) return null;
-    if (ref.current.isEmpty()) return null;
+  const getSignatureData = (ref: React.RefObject<SignatureCanvas | null>): string | null => {
+    if (!ref.current) {
+      console.log("Ref is null");
+      return null;
+    }
+    
     try {
-      return ref.current.getTrimmedCanvas().toDataURL("image/png");
+      const isEmpty = ref.current.isEmpty();
+      if (isEmpty) {
+        console.log("Signature canvas is empty");
+        return null;
+      }
+      
+      const dataUrl = ref.current.getTrimmedCanvas().toDataURL("image/png");
+      console.log("Signature extracted successfully");
+      return dataUrl;
     } catch (err) {
       console.error("Error extracting signature:", err);
       return null;
@@ -73,8 +86,15 @@ export default function VoucherSignature() {
   };
 
   const handleSubmit = async () => {
+    console.log("Submit clicked");
+    console.log("Sales ref:", salesSignRef.current);
+    console.log("Customer ref:", customerSignRef.current);
+
     const salesSign = getSignatureData(salesSignRef);
     const customerSign = getSignatureData(customerSignRef);
+
+    console.log("Sales signature data:", salesSign ? "exists" : "missing");
+    console.log("Customer signature data:", customerSign ? "exists" : "missing");
 
     if (!salesSign || !customerSign) {
       alert("Both signatures are required!");
@@ -119,7 +139,8 @@ export default function VoucherSignature() {
       <h1 className="text-2xl font-bold mb-4">Sign Voucher</h1>
 
       <h2 className="font-bold mb-2">Salesperson Signature</h2>
-      <SignatureCanvas.default
+      {/* Fix: Use SignatureCanvas directly without .default */}
+      <SignatureCanvas
         ref={salesSignRef}
         penColor="black"
         canvasProps={{ width: 500, height: 150, className: "border mb-2" }}
@@ -132,7 +153,7 @@ export default function VoucherSignature() {
       </button>
 
       <h2 className="font-bold mb-2">Customer Signature</h2>
-      <SignatureCanvas.default
+      <SignatureCanvas
         ref={customerSignRef}
         penColor="black"
         canvasProps={{ width: 500, height: 150, className: "border mb-2" }}
