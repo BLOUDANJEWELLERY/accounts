@@ -36,17 +36,25 @@ export default function VoucherSignature() {
   const customerSignRef = useRef<SignatureCanvas.default | null>(null);
 
   // Fetch voucher data
-  useEffect(() => {
-    if (!id) return;
-    setLoading(true);
-    fetch(`/api/voucher/${id}`)
-      .then((res) => res.json())
-      .then((data: { voucher: Voucher }) => {
-        setVoucher(data.voucher);
-        setLoading(false);
-      })
-      .catch(() => setLoading(false));
-  }, [id]);
+ useEffect(() => {
+  if (!id) return;
+
+  const fetchVoucher = async () => {
+    try {
+      setLoading(true); // move inside async function
+      const res = await fetch(`/api/voucher/${id}`);
+      const data: { voucher: Voucher } = await res.json();
+      setVoucher(data.voucher);
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  fetchVoucher();
+}, [id]);
+
 
   const handleClear = (who: "sales" | "customer") => {
     if (who === "sales") salesSignRef.current?.clear();
