@@ -16,10 +16,15 @@ model Customer {
   createdAt DateTime @default(now())
 }
 
-model Invoice {
-  id         String   @id @default(auto()) @map("_id") @db.ObjectId
-  customerId String
-  items      String   // stored as JSON string
-  notes      String?
-  createdAt  DateTime @default(now())
+model Voucher {
+  id          String   @id @default(auto()) @map("_id") @db.ObjectId
+  accountId   String
+  voucherType String
+  date        DateTime
+  rows        String   // JSON array of rows
+  totalNet    Float
+  totalKWD    Float
+  createdAt   DateTime @default(now())
 }
+
+
