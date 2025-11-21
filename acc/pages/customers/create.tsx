@@ -22,31 +22,34 @@ export default function CreateCustomer() {
     setForm({ ...form, [e.target.name]: e.target.value });
   };
 
-  const handleSubmit = async (e: FormEvent<HTMLFormElement>) => {
-    e.preventDefault();
-    setLoading(true);
+const handleSubmit = async (e: FormEvent<HTMLFormElement>) => {
+  e.preventDefault();
+  setLoading(true);
 
-    try {
-      const res = await fetch("/api/customers/create", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(form),
-      });
+  try {
+    const res = await fetch("/api/customers/create", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(form),
+    });
 
-      const data: { success: boolean; customer?: any; error?: string } = await res.json();
-      setLoading(false);
+    type CustomerResponse = { success: boolean; customer?: unknown; error?: string };
+    const data: CustomerResponse = await res.json();
 
-      if (data.success) {
-        setMsg("Customer created successfully!");
-        setForm({ accountNo: "", name: "", phone: "", civilId: "" });
-      } else {
-        setMsg("Error: " + data.error);
-      }
-    } catch (err: unknown) {
-      setLoading(false);
-      setMsg("Unexpected error occurred");
+    setLoading(false);
+
+    if (data.success) {
+      setMsg("Customer created successfully!");
+      setForm({ accountNo: "", name: "", phone: "", civilId: "" });
+    } else {
+      setMsg("Error: " + data.error);
     }
-  };
+  } catch {
+    setLoading(false);
+    setMsg("Unexpected error occurred");
+  }
+};
+
 
   return (
     <div style={{ maxWidth: "500px", margin: "40px auto" }}>

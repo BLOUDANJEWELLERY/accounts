@@ -64,38 +64,41 @@ export default function CreateVoucher() {
   const totalKWD = rows.reduce((acc, r) => acc + r.kwd, 0);
 
   const handleSubmit = async (e: FormEvent<HTMLFormElement>) => {
-    e.preventDefault();
-    if (!accountId) return alert("Select account");
-    setLoading(true);
+  e.preventDefault();
+  if (!accountId) return alert("Select account");
+  setLoading(true);
 
-    try {
-      const res = await fetch("/api/voucher/create", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          accountId,
-          voucherType,
-          rows,
-          totalNet,
-          totalKWD,
-          date: new Date(),
-        }),
-      });
+  try {
+    const res = await fetch("/api/voucher/create", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        accountId,
+        voucherType,
+        rows,
+        totalNet,
+        totalKWD,
+        date: new Date(),
+      }),
+    });
 
-      const data: { success: boolean; voucher?: any; error?: string } = await res.json();
-      setLoading(false);
+    type VoucherResponse = { success: boolean; voucher?: unknown; error?: string };
+    const data: VoucherResponse = await res.json();
 
-      if (data.success) {
-        setMsg("Voucher created successfully!");
-        setRows([{ description: "", weight: 0, netWeight: 0, kwd: 0 }]);
-      } else {
-        setMsg("Error: " + data.error);
-      }
-    } catch (err: unknown) {
-      setLoading(false);
-      setMsg("Unexpected error occurred");
+    setLoading(false);
+
+    if (data.success) {
+      setMsg("Voucher created successfully!");
+      setRows([{ description: "", weight: 0, netWeight: 0, kwd: 0 }]);
+    } else {
+      setMsg("Error: " + data.error);
     }
-  };
+  } catch {
+    setLoading(false);
+    setMsg("Unexpected error occurred");
+  }
+};
+
 
   return (
     <div style={{ maxWidth: "900px", margin: "40px auto" }}>
