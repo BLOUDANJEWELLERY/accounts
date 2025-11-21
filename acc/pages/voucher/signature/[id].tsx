@@ -1,7 +1,7 @@
 // pages/voucher/signature/[id].tsx
 import { useState, useRef, useEffect } from "react";
 import { useRouter } from "next/router";
-import SignatureCanvas from "react-signature-canvas";
+import SignaturePad from "react-signature-canvas";
 
 interface VoucherRow {
   description: string;
@@ -30,11 +30,11 @@ export default function VoucherSignature() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState("");
-  const [signaturesReady, setSignaturesReady] = useState(false);
+  const [hasSalesSigned, setHasSalesSigned] = useState(false);
+  const [hasCustomerSigned, setHasCustomerSigned] = useState(false);
 
-  // Use the correct ref type for react-signature-canvas
-  const salesSignRef = useRef<SignatureCanvas | null>(null);
-  const customerSignRef = useRef<SignatureCanvas | null>(null);
+  const salesSignRef = useRef<any>(null);
+  const customerSignRef = useRef<any>(null);
 
   // Fetch voucher data
   useEffect(() => {
@@ -56,39 +56,49 @@ export default function VoucherSignature() {
     fetchVoucher();
   }, [id]);
 
-  // Check if signatures are ready
-  useEffect(() => {
-    // Set a small timeout to ensure the canvas is fully initialized
-    const timer = setTimeout(() => {
-      setSignaturesReady(true);
-    }, 500);
-
-    return () => clearTimeout(timer);
-  }, []);
-
   const handleClear = (who: "sales" | "customer") => {
     if (who === "sales") {
       salesSignRef.current?.clear();
+      setHasSalesSigned(false);
     } else {
       customerSignRef.current?.clear();
+      setHasCustomerSigned(false);
     }
   };
 
-  const getSignatureData = (ref: React.RefObject<SignatureCanvas | null>): string | null => {
+  const handleSignatureEnd = (who: "sales" | "customer") => {
+    if (who === "sales") {
+      setHasSalesSigned(true);
+    } else {
+      setHasCustomerSigned(true);
+    }
+  };
+
+  const getSignatureData = (ref: React.RefObject<any>): string | null => {
     if (!ref.current) {
       console.error("Signature ref not available");
       return null;
     }
     
     try {
-      // Check if signature canvas has any strokes
+      // Check if signature is empty
       if (ref.current.isEmpty()) {
         return null;
       }
       
-      // Get the signature data
-      const dataUrl = ref.current.getTrimmedCanvas().toDataURL("image/png");
-      return dataUrl;
+      // Alternative method to get signature data
+      const canvas = ref.current.getCanvas();
+      if (canvas && canvas.toDataURL) {
+        return canvas.toDataURL("image/png");
+      }
+      
+      // Fallback: try the original method but with better error handling
+      try {
+        return ref.current.getTrimmedCanvas().toDataURL("image/png");
+      } catch (trimmedError) {
+        console.warn("getTrimmedCanvas failed, using regular canvas:", trimmedError);
+        return ref.current.toDataURL("image/png");
+      }
     } catch (err) {
       console.error("Error extracting signature:", err);
       return null;
@@ -96,8 +106,8 @@ export default function VoucherSignature() {
   };
 
   const handleSubmit = async () => {
-    if (!signaturesReady) {
-      alert("Signatures are still initializing, please try again in a moment.");
+    if (!hasSalesSigned || !hasCustomerSigned) {
+      alert("Both signatures are required! Please provide both salesperson and customer signatures.");
       return;
     }
 
@@ -108,7 +118,7 @@ export default function VoucherSignature() {
     console.log("Customer signature available:", !!customerSign);
 
     if (!salesSign || !customerSign) {
-      alert("Both signatures are required! Please provide both salesperson and customer signatures.");
+      alert("Failed to capture signature data. Please try signing again.");
       return;
     }
 
@@ -133,6 +143,9 @@ export default function VoucherSignature() {
         if (data.pdfUrl) {
           window.open(data.pdfUrl, "_blank");
         }
+        // Clear signatures after successful submission
+        handleClear("sales");
+        handleClear("customer");
       } else {
         setMsg("Error: " + data.error);
       }
@@ -153,58 +166,64 @@ export default function VoucherSignature() {
 
       <div className="mb-8">
         <h2 className="font-bold mb-2">Salesperson Signature</h2>
-        <SignatureCanvas
-          ref={salesSignRef}
-          penColor="black"
-          canvasProps={{ 
-            width: 500, 
-            height: 150, 
-            className: "border mb-2 bg-white",
-            style: { border: "1px solid #000" }
-          }}
-        />
+        <div style={{ border: "1px solid #000", background: "white", width: "500px", height: "150px" }}>
+          <SignaturePad
+            ref={salesSignRef}
+            penColor="black"
+            canvasProps={{ 
+              width: 500, 
+              height: 150,
+              style: { width: "500px", height: "150px" }
+            }}
+            onEnd={() => handleSignatureEnd("sales")}
+          />
+        </div>
         <button
           onClick={() => handleClear("sales")}
-          className="bg-gray-500 text-white px-4 py-2 mb-4 rounded"
+          className="bg-gray-500 text-white px-4 py-2 mb-4 rounded mt-2"
         >
           Clear Sales Signature
         </button>
+        {hasSalesSigned && <p className="text-green-600">✓ Signature provided</p>}
       </div>
 
       <div className="mb-8">
         <h2 className="font-bold mb-2">Customer Signature</h2>
-        <SignatureCanvas
-          ref={customerSignRef}
-          penColor="black"
-          canvasProps={{ 
-            width: 500, 
-            height: 150, 
-            className: "border mb-2 bg-white",
-            style: { border: "1px solid #000" }
-          }}
-        />
+        <div style={{ border: "1px solid #000", background: "white", width: "500px", height: "150px" }}>
+          <SignaturePad
+            ref={customerSignRef}
+            penColor="black"
+            canvasProps={{ 
+              width: 500, 
+              height: 150,
+              style: { width: "500px", height: "150px" }
+            }}
+            onEnd={() => handleSignatureEnd("customer")}
+          />
+        </div>
         <button
           onClick={() => handleClear("customer")}
-          className="bg-gray-500 text-white px-4 py-2 mb-4 rounded"
+          className="bg-gray-500 text-white px-4 py-2 mb-4 rounded mt-2"
         >
           Clear Customer Signature
         </button>
+        {hasCustomerSigned && <p className="text-green-600">✓ Signature provided</p>}
       </div>
 
       <button
         onClick={handleSubmit}
-        disabled={saving || !signaturesReady}
-        className="bg-black text-white px-6 py-3 mt-4 rounded disabled:bg-gray-400"
+        disabled={saving || !hasSalesSigned || !hasCustomerSigned}
+        className={`px-6 py-3 mt-4 rounded ${
+          saving || !hasSalesSigned || !hasCustomerSigned
+            ? "bg-gray-400 cursor-not-allowed"
+            : "bg-black text-white hover:bg-gray-800"
+        }`}
       >
         {saving ? "Generating PDF..." : "Generate PDF"}
       </button>
 
-      {!signaturesReady && (
-        <p className="mt-2 text-yellow-600">Initializing signature pads...</p>
-      )}
-
       {msg && (
-        <p className={`mt-4 ${msg.includes("Error") ? "text-red-600" : "text-blue-600"}`}>
+        <p className={`mt-4 ${msg.includes("Error") ? "text-red-600" : "text-green-600"}`}>
           {msg}
         </p>
       )}
