@@ -25,6 +25,7 @@ model Voucher {
   totalNet    Float
   totalKWD    Float
   createdAt   DateTime @default(now())
+  pdfUrl      String?
 }
 
 
