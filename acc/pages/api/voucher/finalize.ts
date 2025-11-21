@@ -59,23 +59,44 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     // Upload to Backblaze B2
     await authorizeB2();
     const fileName = `voucher-${voucherId}.pdf`;
-    const uploadUrlResponse = await b2.getUploadUrl({ bucketId: process.env.B2_BUCKET_ID! });
-    await b2.uploadFile({
+    
+    // Use the correct bucket ID from your environment
+    const uploadUrlResponse = await b2.getUploadUrl({ 
+      bucketId: process.env.B2_BUCKET_ID! 
+    });
+    
+    const uploadResponse = await b2.uploadFile({
       uploadUrl: uploadUrlResponse.data.uploadUrl,
       uploadAuthToken: uploadUrlResponse.data.authorizationToken,
       fileName,
       data: Buffer.from(pdfBytes),
-      info: { "Content-Type": "application/pdf" },
+      info: { 
+        "Content-Type": "application/pdf",
+        "X-Bz-File-Name": fileName 
+      },
     });
 
-    const pdfUrl = `https://f000.backblazeb2.com/file/${process.env.B2_BUCKET_NAME}/${fileName}`;
+    // Construct the correct URL based on your bucket details
+    // From your upload details, use the friendly URL format
+    const bucketName = process.env.B2_BUCKET_NAME || "Zamzam";
+    const pdfUrl = `https://f005.backblazeb2.com/file/${bucketName}/${fileName}`;
+
+    // Alternative URL formats you can try:
+    // const pdfUrl = `https://${bucketName}.s3.us-east-005.backblazeb2.com/${fileName}`;
+    // const pdfUrl = uploadResponse.data.fileId 
+    //   ? `https://f005.backblazeb2.com/b2api/v1/b2_download_file_by_id?fileId=${uploadResponse.data.fileId}`
+    //   : `https://f005.backblazeb2.com/file/${bucketName}/${fileName}`;
 
     // Save PDF URL in DB
-    await prisma.voucher.update({ where: { id: voucherId }, data: { pdfUrl } });
+    await prisma.voucher.update({ 
+      where: { id: voucherId }, 
+      data: { pdfUrl } 
+    });
 
+    console.log("PDF uploaded successfully:", pdfUrl);
     return res.json({ success: true, pdfUrl });
   } catch (err) {
-    console.error(err);
+    console.error("PDF generation failed:", err);
     return res.status(500).json({ success: false, error: "PDF generation failed" });
   }
 }
