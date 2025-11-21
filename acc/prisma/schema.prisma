@@ -15,3 +15,11 @@ model Customer {
   civilId   String
   createdAt DateTime @default(now())
 }
+
+model Invoice {
+  id         String   @id @default(auto()) @map("_id") @db.ObjectId
+  customerId String
+  items      String   // stored as JSON string
+  notes      String?
+  createdAt  DateTime @default(now())
+}
