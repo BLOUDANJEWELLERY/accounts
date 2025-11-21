@@ -62,51 +62,50 @@ export default function VoucherSignature() {
   };
 
   // Safely get signature data URL
-  const getSignatureData = (ref: MutableRefObject<SignatureCanvas | null>): string | null => {
-    if (!ref.current) return null;
-    if (ref.current.isEmpty()) return null;
-    return ref.current.getTrimmedCanvas()?.toDataURL("image/png") || null;
-  };
+
+// Safe function to get canvas data
+const getSignatureData = (ref: React.RefObject<SignatureCanvas>): string | null => {
+  if (!ref.current) return null;                // Ref not ready
+  if (typeof ref.current.getTrimmedCanvas !== "function") return null; // Safety check
+  if (ref.current.isEmpty()) return null;       // Canvas empty
+  const canvas = ref.current.getTrimmedCanvas();
+  if (!canvas) return null;                     // Extra safety
+  return canvas.toDataURL("image/png");
+};
 
   // Submit signatures and generate PDF
-  const handleSubmit = async () => {
-    const salesSign = getSignatureData(salesSignRef);
-    const customerSign = getSignatureData(customerSignRef);
+const handleSubmit = async () => {
+  const salesSign = getSignatureData(salesSignRef);
+  const customerSign = getSignatureData(customerSignRef);
 
-    if (!salesSign || !customerSign) {
-      alert("Both signatures are required!");
-      return;
-    }
+  if (!salesSign || !customerSign) {
+    alert("Both signatures are required!");
+    return;
+  }
 
-    setSaving(true);
-    setMsg("");
+  setSaving(true);
 
-    try {
-      const res = await fetch("/api/voucher/finalize", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          voucherId: id,
-          salesSign,
-          customerSign,
-        }),
-      });
+  try {
+    const res = await fetch("/api/voucher/finalize", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        voucherId: id,
+        salesSign,
+        customerSign,
+      }),
+    });
 
-      const data: { success: boolean; pdfUrl?: string; error?: string } = await res.json();
-
-      if (data.success && data.pdfUrl) {
-        setMsg("PDF generated and saved successfully!");
-        window.open(data.pdfUrl, "_blank");
-      } else {
-        setMsg("Error: " + (data.error || "Unknown error"));
-      }
-    } catch (err) {
-      console.error(err);
-      setMsg("Unexpected error occurred");
-    } finally {
-      setSaving(false);
-    }
-  };
+    const data: { success: boolean; pdfUrl?: string; error?: string } = await res.json();
+    setMsg(data.success ? "PDF generated successfully!" : "Error: " + data.error);
+    if (data.pdfUrl) window.open(data.pdfUrl, "_blank");
+  } catch (err) {
+    console.error(err);
+    setMsg("Unexpected error occurred");
+  } finally {
+    setSaving(false);
+  }
+};
 
   if (loading) return <p>Loading voucher...</p>;
   if (!voucher) return <p>Voucher not found</p>;
