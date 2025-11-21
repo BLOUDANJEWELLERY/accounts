@@ -1,4 +1,3 @@
-// pages/voucher/signature/[id].tsx
 import { useState, useRef, useEffect } from "react";
 import { useRouter } from "next/router";
 import SignatureCanvas from "react-signature-canvas";
@@ -31,11 +30,10 @@ export default function VoucherSignature() {
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState("");
 
-  // Use `any` for SignatureCanvas ref to safely call its methods
-  const salesSignRef = useRef<any>(null);
-  const customerSignRef = useRef<any>(null);
+  // Use correct SignatureCanvas type
+  const salesSignRef = useRef<SignatureCanvas>(null);
+  const customerSignRef = useRef<SignatureCanvas>(null);
 
-  // Fetch voucher data
   useEffect(() => {
     if (!id) return;
 
@@ -54,20 +52,18 @@ export default function VoucherSignature() {
     fetchVoucher();
   }, [id]);
 
-  // Clear signature canvas
   const handleClear = (who: "sales" | "customer") => {
     if (who === "sales") salesSignRef.current?.clear();
     else customerSignRef.current?.clear();
   };
 
-  // Get signature data safely
-  const getSignatureData = (ref: any): string | null => {
-    if (!ref?.current) return null;
+  // Type-safe signature getter
+  const getSignatureData = (ref: React.RefObject<SignatureCanvas>): string | null => {
+    if (!ref.current) return null;
     if (ref.current.isEmpty()) return null;
     return ref.current.getTrimmedCanvas().toDataURL("image/png");
   };
 
-  // Submit signatures to backend and generate PDF
   const handleSubmit = async () => {
     const salesSign = getSignatureData(salesSignRef);
     const customerSign = getSignatureData(customerSignRef);
@@ -120,11 +116,7 @@ export default function VoucherSignature() {
           penColor="black"
           canvasProps={{ width: 500, height: 150, className: "border mb-2" }}
         />
-        <button
-          type="button"
-          onClick={() => handleClear("sales")}
-          className="bg-gray-500 text-white px-2 py-1"
-        >
+        <button type="button" onClick={() => handleClear("sales")} className="bg-gray-500 text-white px-2 py-1">
           Clear
         </button>
       </div>
@@ -136,20 +128,12 @@ export default function VoucherSignature() {
           penColor="black"
           canvasProps={{ width: 500, height: 150, className: "border mb-2" }}
         />
-        <button
-          type="button"
-          onClick={() => handleClear("customer")}
-          className="bg-gray-500 text-white px-2 py-1"
-        >
+        <button type="button" onClick={() => handleClear("customer")} className="bg-gray-500 text-white px-2 py-1">
           Clear
         </button>
       </div>
 
-      <button
-        onClick={handleSubmit}
-        disabled={saving}
-        className="bg-black text-white px-4 py-2 mt-4"
-      >
+      <button onClick={handleSubmit} disabled={saving} className="bg-black text-white px-4 py-2 mt-4">
         {saving ? "Generating PDF..." : "Generate PDF"}
       </button>
 
