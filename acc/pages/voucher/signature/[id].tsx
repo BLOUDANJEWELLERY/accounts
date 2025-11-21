@@ -1,4 +1,5 @@
-import { useState, useRef, useEffect } from "react";
+// pages/voucher/signature/[id].tsx
+import { useState, useRef, useEffect, MutableRefObject } from "react";
 import { useRouter } from "next/router";
 import SignatureCanvas from "react-signature-canvas";
 
@@ -26,14 +27,15 @@ export default function VoucherSignature() {
   const { id } = router.query;
 
   const [voucher, setVoucher] = useState<Voucher | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
-  const [msg, setMsg] = useState("");
+  const [loading, setLoading] = useState<boolean>(true);
+  const [saving, setSaving] = useState<boolean>(false);
+  const [msg, setMsg] = useState<string>("");
 
-  // Use correct SignatureCanvas type
-  const salesSignRef = useRef<SignatureCanvas>(null);
-  const customerSignRef = useRef<SignatureCanvas>(null);
+  // Safe refs to SignatureCanvas
+  const salesSignRef = useRef<SignatureCanvas | null>(null);
+  const customerSignRef = useRef<SignatureCanvas | null>(null);
 
+  // Fetch voucher data
   useEffect(() => {
     if (!id) return;
 
@@ -44,6 +46,7 @@ export default function VoucherSignature() {
         setVoucher(data.voucher);
       } catch (err) {
         console.error(err);
+        setMsg("Failed to fetch voucher.");
       } finally {
         setLoading(false);
       }
@@ -52,19 +55,20 @@ export default function VoucherSignature() {
     fetchVoucher();
   }, [id]);
 
+  // Clear signature canvas
   const handleClear = (who: "sales" | "customer") => {
     if (who === "sales") salesSignRef.current?.clear();
     else customerSignRef.current?.clear();
   };
 
-  // Type-safe signature getter
-// Type-safe signature getter
-const getSignatureData = (ref: React.RefObject<SignatureCanvas | null>): string | null => {
-  if (!ref.current) return null;
-  if (ref.current.isEmpty()) return null;
-  return ref.current.getTrimmedCanvas().toDataURL("image/png");
-};
+  // Safely get signature data URL
+  const getSignatureData = (ref: MutableRefObject<SignatureCanvas | null>): string | null => {
+    if (!ref.current) return null;
+    if (ref.current.isEmpty()) return null;
+    return ref.current.getTrimmedCanvas()?.toDataURL("image/png") || null;
+  };
 
+  // Submit signatures and generate PDF
   const handleSubmit = async () => {
     const salesSign = getSignatureData(salesSignRef);
     const customerSign = getSignatureData(customerSignRef);
@@ -89,6 +93,7 @@ const getSignatureData = (ref: React.RefObject<SignatureCanvas | null>): string 
       });
 
       const data: { success: boolean; pdfUrl?: string; error?: string } = await res.json();
+
       if (data.success && data.pdfUrl) {
         setMsg("PDF generated and saved successfully!");
         window.open(data.pdfUrl, "_blank");
@@ -117,7 +122,11 @@ const getSignatureData = (ref: React.RefObject<SignatureCanvas | null>): string 
           penColor="black"
           canvasProps={{ width: 500, height: 150, className: "border mb-2" }}
         />
-        <button type="button" onClick={() => handleClear("sales")} className="bg-gray-500 text-white px-2 py-1">
+        <button
+          type="button"
+          onClick={() => handleClear("sales")}
+          className="bg-gray-500 text-white px-2 py-1"
+        >
           Clear
         </button>
       </div>
@@ -129,12 +138,20 @@ const getSignatureData = (ref: React.RefObject<SignatureCanvas | null>): string 
           penColor="black"
           canvasProps={{ width: 500, height: 150, className: "border mb-2" }}
         />
-        <button type="button" onClick={() => handleClear("customer")} className="bg-gray-500 text-white px-2 py-1">
+        <button
+          type="button"
+          onClick={() => handleClear("customer")}
+          className="bg-gray-500 text-white px-2 py-1"
+        >
           Clear
         </button>
       </div>
 
-      <button onClick={handleSubmit} disabled={saving} className="bg-black text-white px-4 py-2 mt-4">
+      <button
+        onClick={handleSubmit}
+        disabled={saving}
+        className="bg-black text-white px-4 py-2 mt-4"
+      >
         {saving ? "Generating PDF..." : "Generate PDF"}
       </button>
 
