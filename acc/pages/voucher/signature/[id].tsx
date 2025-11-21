@@ -1,5 +1,5 @@
 // pages/voucher/signature/[id].tsx
-import { useState, useRef, useEffect, MutableRefObject } from "react";
+import { useState, useRef, useEffect, RefObject } from "react";
 import { useRouter } from "next/router";
 import SignatureCanvas from "react-signature-canvas";
 
@@ -20,134 +20,128 @@ interface Voucher {
   rows: VoucherRow[];
   totalNet: number;
   totalKWD: number;
+  date?: string;
 }
+
+// Helper to safely get signature data
+const getSignatureData = (ref: RefObject<SignatureCanvas | null>): string | null => {
+  if (!ref.current) return null;
+  if (ref.current.isEmpty()) return null;
+  try {
+    return ref.current.getTrimmedCanvas().toDataURL("image/png");
+  } catch (err) {
+    console.error("Error extracting signature:", err);
+    return null;
+  }
+};
 
 export default function VoucherSignature() {
   const router = useRouter();
   const { id } = router.query;
 
   const [voucher, setVoucher] = useState<Voucher | null>(null);
-  const [loading, setLoading] = useState<boolean>(true);
-  const [saving, setSaving] = useState<boolean>(false);
-  const [msg, setMsg] = useState<string>("");
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [msg, setMsg] = useState("");
 
-  // Safe refs to SignatureCanvas
   const salesSignRef = useRef<SignatureCanvas | null>(null);
   const customerSignRef = useRef<SignatureCanvas | null>(null);
 
   // Fetch voucher data
   useEffect(() => {
     if (!id) return;
-
-    const fetchVoucher = async () => {
-      try {
-        const res = await fetch(`/api/voucher/${id}`);
-        const data: { voucher: Voucher } = await res.json();
+    setLoading(true);
+    fetch(`/api/voucher/${id}`)
+      .then((res) => res.json())
+      .then((data: { voucher: Voucher }) => {
         setVoucher(data.voucher);
-      } catch (err) {
-        console.error(err);
-        setMsg("Failed to fetch voucher.");
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    fetchVoucher();
+      })
+      .catch((err) => {
+        console.error("Error fetching voucher:", err);
+      })
+      .finally(() => setLoading(false));
   }, [id]);
 
-  // Clear signature canvas
   const handleClear = (who: "sales" | "customer") => {
     if (who === "sales") salesSignRef.current?.clear();
     else customerSignRef.current?.clear();
   };
 
-  // Safely get signature data URL
+  const handleSubmit = async () => {
+    const salesSign = getSignatureData(salesSignRef);
+    const customerSign = getSignatureData(customerSignRef);
 
-// Safe function to get canvas data
-// Accepts ref that might be null
-const getSignatureData = (ref: React.RefObject<SignatureCanvas | null>): string | null => {
-  if (!ref.current) return null; // Ref not ready
-  if (typeof ref.current.getTrimmedCanvas !== "function") return null; // Safety check
-  if (ref.current.isEmpty()) return null; // Canvas empty
-  const canvas = ref.current.getTrimmedCanvas();
-  if (!canvas) return null; // Extra safety
-  return canvas.toDataURL("image/png");
-};
+    if (!salesSign || !customerSign) {
+      alert("Both signatures are required!");
+      return;
+    }
 
-  // Submit signatures and generate PDF
-const handleSubmit = async () => {
-  const salesSign = getSignatureData(salesSignRef);
-  const customerSign = getSignatureData(customerSignRef);
+    setSaving(true);
 
-  if (!salesSign || !customerSign) {
-    alert("Both signatures are required!");
-    return;
-  }
+    try {
+      const res = await fetch("/api/voucher/finalize", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          voucherId: id,
+          salesSign,
+          customerSign,
+        }),
+      });
 
-  setSaving(true);
+      const data: { success: boolean; pdfUrl?: string; error?: string } = await res.json();
 
-  try {
-    const res = await fetch("/api/voucher/finalize", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        voucherId: id,
-        salesSign,
-        customerSign,
-      }),
-    });
-
-    const data: { success: boolean; pdfUrl?: string; error?: string } = await res.json();
-    setMsg(data.success ? "PDF generated successfully!" : "Error: " + data.error);
-    if (data.pdfUrl) window.open(data.pdfUrl, "_blank");
-  } catch (err) {
-    console.error(err);
-    setMsg("Unexpected error occurred");
-  } finally {
-    setSaving(false);
-  }
-};
+      if (data.success && data.pdfUrl) {
+        setMsg("PDF generated successfully!");
+        window.open(data.pdfUrl, "_blank");
+      } else {
+        setMsg("Error: " + (data.error || "Unknown error"));
+      }
+    } catch (err) {
+      console.error("Error generating PDF:", err);
+      setMsg("Unexpected error occurred");
+    } finally {
+      setSaving(false);
+    }
+  };
 
   if (loading) return <p>Loading voucher...</p>;
-  if (!voucher) return <p>Voucher not found</p>;
+  if (!voucher) return <p>Voucher not found.</p>;
 
   return (
     <div style={{ maxWidth: "900px", margin: "40px auto" }}>
       <h1 className="text-2xl font-bold mb-4">Sign Voucher</h1>
 
-      <div className="mb-6">
-        <h2 className="font-bold mb-2">Salesperson Signature</h2>
-        <SignatureCanvas
-          ref={salesSignRef}
-          penColor="black"
-          canvasProps={{ width: 500, height: 150, className: "border mb-2" }}
-        />
-        <button
-          type="button"
-          onClick={() => handleClear("sales")}
-          className="bg-gray-500 text-white px-2 py-1"
-        >
-          Clear
-        </button>
-      </div>
+      <h2 className="font-bold mb-2">Salesperson Signature</h2>
+      <SignatureCanvas
+        ref={salesSignRef}
+        penColor="black"
+        canvasProps={{ width: 500, height: 150, className: "border mb-2" }}
+      />
+      <button
+        type="button"
+        onClick={() => handleClear("sales")}
+        className="bg-gray-500 text-white px-2 py-1 mb-4"
+      >
+        Clear
+      </button>
 
-      <div className="mb-6">
-        <h2 className="font-bold mb-2">Customer Signature</h2>
-        <SignatureCanvas
-          ref={customerSignRef}
-          penColor="black"
-          canvasProps={{ width: 500, height: 150, className: "border mb-2" }}
-        />
-        <button
-          type="button"
-          onClick={() => handleClear("customer")}
-          className="bg-gray-500 text-white px-2 py-1"
-        >
-          Clear
-        </button>
-      </div>
+      <h2 className="font-bold mb-2">Customer Signature</h2>
+      <SignatureCanvas
+        ref={customerSignRef}
+        penColor="black"
+        canvasProps={{ width: 500, height: 150, className: "border mb-2" }}
+      />
+      <button
+        type="button"
+        onClick={() => handleClear("customer")}
+        className="bg-gray-500 text-white px-2 py-1 mb-4"
+      >
+        Clear
+      </button>
 
       <button
+        type="button"
         onClick={handleSubmit}
         disabled={saving}
         className="bg-black text-white px-4 py-2 mt-4"
