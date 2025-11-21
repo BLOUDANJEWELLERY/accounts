@@ -1,8 +1,14 @@
-// pages/customers/create.tsx
-import { useState } from "react";
+import { useState, ChangeEvent, FormEvent } from "react";
+
+interface CustomerForm {
+  accountNo: string;
+  name: string;
+  phone: string;
+  civilId: string;
+}
 
 export default function CreateCustomer() {
-  const [form, setForm] = useState({
+  const [form, setForm] = useState<CustomerForm>({
     accountNo: "",
     name: "",
     phone: "",
@@ -12,36 +18,39 @@ export default function CreateCustomer() {
   const [loading, setLoading] = useState(false);
   const [msg, setMsg] = useState("");
 
-  const handleChange = (e: any) => {
+  const handleChange = (e: ChangeEvent<HTMLInputElement>) => {
     setForm({ ...form, [e.target.name]: e.target.value });
   };
 
-  const handleSubmit = async (e: any) => {
+  const handleSubmit = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     setLoading(true);
 
-    const res = await fetch("/api/customers/create", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(form),
-    });
+    try {
+      const res = await fetch("/api/customers/create", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(form),
+      });
 
-    const data = await res.json();
-    setLoading(false);
+      const data: { success: boolean; customer?: any; error?: string } = await res.json();
+      setLoading(false);
 
-    if (data.success) {
-      setMsg("Customer created successfully!");
-      setForm({ accountNo: "", name: "", phone: "", civilId: "" });
-    } else {
-      setMsg("Error: " + data.error);
+      if (data.success) {
+        setMsg("Customer created successfully!");
+        setForm({ accountNo: "", name: "", phone: "", civilId: "" });
+      } else {
+        setMsg("Error: " + data.error);
+      }
+    } catch (err: unknown) {
+      setLoading(false);
+      setMsg("Unexpected error occurred");
     }
   };
 
   return (
     <div style={{ maxWidth: "500px", margin: "40px auto" }}>
-      <h1 style={{ fontSize: "24px", marginBottom: "20px" }}>
-        Create Customer Account
-      </h1>
+      <h1 style={{ fontSize: "24px", marginBottom: "20px" }}>Create Customer Account</h1>
 
       <form onSubmit={handleSubmit}>
         <label>Account No</label>
@@ -81,6 +90,7 @@ export default function CreateCustomer() {
         />
 
         <button
+          type="submit"
           disabled={loading}
           className="bg-black text-white px-4 py-2 mt-2"
         >

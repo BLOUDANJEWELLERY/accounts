@@ -1,11 +1,30 @@
-import { NextApiRequest, NextApiResponse } from "next";
+import type { NextApiRequest, NextApiResponse } from "next";
 import { prisma } from "../../../server/prisma";
+
+interface VoucherRow {
+  description: string;
+  weight: number;
+  purity?: number;
+  makingCharges?: number;
+  discountPercent?: number;
+  netWeight: number;
+  kwd: number;
+}
+
+interface VoucherBody {
+  accountId: string;
+  voucherType: "INV" | "REC";
+  rows: VoucherRow[];
+  totalNet: number;
+  totalKWD: number;
+  date: string;
+}
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   if (req.method !== "POST") return res.status(405).json({ success: false, error: "Method not allowed" });
 
   try {
-    const { accountId, voucherType, rows, totalNet, totalKWD, date } = req.body;
+    const { accountId, voucherType, rows, totalNet, totalKWD, date } = req.body as VoucherBody;
 
     const voucher = await prisma.voucher.create({
       data: {
@@ -19,7 +38,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     });
 
     return res.json({ success: true, voucher });
-  } catch (error: any) {
-    return res.status(500).json({ success: false, error: error.message });
+  } catch (error: unknown) {
+    return res.status(500).json({ success: false, error: (error as Error).message });
   }
 }
