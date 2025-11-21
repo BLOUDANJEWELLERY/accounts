@@ -1,7 +1,7 @@
 // pages/voucher/signature/[id].tsx
 import { useState, useRef, useEffect } from "react";
 import { useRouter } from "next/router";
-import SignaturePad from "react-signature-canvas";
+import SignatureCanvas from "react-signature-canvas";
 
 interface VoucherRow {
   description: string;
@@ -22,18 +22,6 @@ interface Voucher {
   totalKWD: number;
 }
 
-// Define the type for signature pad ref based on the library's methods
-interface SignaturePadRef {
-  clear: () => void;
-  isEmpty: () => boolean;
-  toDataURL: (type?: string, quality?: any) => string;
-  getCanvas: () => HTMLCanvasElement;
-  getTrimmedCanvas: () => HTMLCanvasElement;
-  fromDataURL: (dataUrl: string) => void;
-  off: () => void;
-  on: () => void;
-}
-
 export default function VoucherSignature() {
   const router = useRouter();
   const { id } = router.query;
@@ -45,8 +33,9 @@ export default function VoucherSignature() {
   const [hasSalesSigned, setHasSalesSigned] = useState(false);
   const [hasCustomerSigned, setHasCustomerSigned] = useState(false);
 
-  const salesSignRef = useRef<SignaturePadRef | null>(null);
-  const customerSignRef = useRef<SignaturePadRef | null>(null);
+  // Use the correct type from the library
+  const salesSignRef = useRef<SignatureCanvas | null>(null);
+  const customerSignRef = useRef<SignatureCanvas | null>(null);
 
   // Fetch voucher data
   useEffect(() => {
@@ -86,7 +75,7 @@ export default function VoucherSignature() {
     }
   };
 
-  const getSignatureData = (ref: React.RefObject<SignaturePadRef | null>): string | null => {
+  const getSignatureData = (ref: React.RefObject<SignatureCanvas | null>): string | null => {
     if (!ref.current) {
       console.error("Signature ref not available");
       return null;
@@ -98,33 +87,10 @@ export default function VoucherSignature() {
         return null;
       }
       
-      // Method 1: Try direct toDataURL first (most reliable)
-      try {
-        return ref.current.toDataURL("image/png");
-      } catch (error1) {
-        console.warn("Direct toDataURL failed:", error1);
-      }
-      
-      // Method 2: Try getCanvas
-      try {
-        const canvas = ref.current.getCanvas();
-        if (canvas && canvas.toDataURL) {
-          return canvas.toDataURL("image/png");
-        }
-      } catch (error2) {
-        console.warn("getCanvas failed:", error2);
-      }
-      
-      // Method 3: Try getTrimmedCanvas as last resort
-      try {
-        return ref.current.getTrimmedCanvas().toDataURL("image/png");
-      } catch (error3) {
-        console.warn("getTrimmedCanvas failed:", error3);
-      }
-      
-      return null;
+      // Use the most basic method that should work
+      return ref.current.toDataURL("image/png");
     } catch (err) {
-      console.error("All signature extraction methods failed:", err);
+      console.error("Error extracting signature:", err);
       return null;
     }
   };
@@ -191,7 +157,7 @@ export default function VoucherSignature() {
       <div className="mb-8">
         <h2 className="font-bold mb-2">Salesperson Signature</h2>
         <div style={{ border: "1px solid #000", background: "white", width: "500px", height: "150px" }}>
-          <SignaturePad
+          <SignatureCanvas
             ref={salesSignRef}
             penColor="black"
             canvasProps={{ 
@@ -214,7 +180,7 @@ export default function VoucherSignature() {
       <div className="mb-8">
         <h2 className="font-bold mb-2">Customer Signature</h2>
         <div style={{ border: "1px solid #000", background: "white", width: "500px", height: "150px" }}>
-          <SignaturePad
+          <SignatureCanvas
             ref={customerSignRef}
             penColor="black"
             canvasProps={{ 
