@@ -1,7 +1,7 @@
 // pages/voucher/signature/[id].tsx
-import { useState, useRef, useEffect, RefObject } from "react";
+import { useState, useRef, useEffect } from "react";
 import { useRouter } from "next/router";
-import SignatureCanvas from "react-signature-canvas";
+import * as SignatureCanvas from "react-signature-canvas";
 
 interface VoucherRow {
   description: string;
@@ -20,20 +20,7 @@ interface Voucher {
   rows: VoucherRow[];
   totalNet: number;
   totalKWD: number;
-  date?: string;
 }
-
-// Helper to safely get signature data
-const getSignatureData = (ref: RefObject<SignatureCanvas | null>): string | null => {
-  if (!ref.current) return null;
-  if (ref.current.isEmpty()) return null;
-  try {
-    return ref.current.getTrimmedCanvas().toDataURL("image/png");
-  } catch (err) {
-    console.error("Error extracting signature:", err);
-    return null;
-  }
-};
 
 export default function VoucherSignature() {
   const router = useRouter();
@@ -44,8 +31,9 @@ export default function VoucherSignature() {
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState("");
 
-  const salesSignRef = useRef<SignatureCanvas | null>(null);
-  const customerSignRef = useRef<SignatureCanvas | null>(null);
+  // Use SignatureCanvas.default to get the actual class instance
+  const salesSignRef = useRef<SignatureCanvas.default | null>(null);
+  const customerSignRef = useRef<SignatureCanvas.default | null>(null);
 
   // Fetch voucher data
   useEffect(() => {
@@ -55,16 +43,25 @@ export default function VoucherSignature() {
       .then((res) => res.json())
       .then((data: { voucher: Voucher }) => {
         setVoucher(data.voucher);
+        setLoading(false);
       })
-      .catch((err) => {
-        console.error("Error fetching voucher:", err);
-      })
-      .finally(() => setLoading(false));
+      .catch(() => setLoading(false));
   }, [id]);
 
   const handleClear = (who: "sales" | "customer") => {
     if (who === "sales") salesSignRef.current?.clear();
     else customerSignRef.current?.clear();
+  };
+
+  const getSignatureData = (ref: React.RefObject<SignatureCanvas.default | null>): string | null => {
+    if (!ref.current) return null;
+    if (ref.current.isEmpty()) return null;
+    try {
+      return ref.current.getTrimmedCanvas().toDataURL("image/png");
+    } catch (err) {
+      console.error("Error extracting signature:", err);
+      return null;
+    }
   };
 
   const handleSubmit = async () => {
@@ -77,6 +74,7 @@ export default function VoucherSignature() {
     }
 
     setSaving(true);
+    setMsg("");
 
     try {
       const res = await fetch("/api/voucher/finalize", {
@@ -90,36 +88,35 @@ export default function VoucherSignature() {
       });
 
       const data: { success: boolean; pdfUrl?: string; error?: string } = await res.json();
+      setSaving(false);
 
-      if (data.success && data.pdfUrl) {
-        setMsg("PDF generated successfully!");
-        window.open(data.pdfUrl, "_blank");
+      if (data.success) {
+        setMsg("PDF generated and saved successfully!");
+        if (data.pdfUrl) window.open(data.pdfUrl, "_blank");
       } else {
-        setMsg("Error: " + (data.error || "Unknown error"));
+        setMsg("Error: " + data.error);
       }
     } catch (err) {
-      console.error("Error generating PDF:", err);
-      setMsg("Unexpected error occurred");
-    } finally {
+      console.error(err);
       setSaving(false);
+      setMsg("Unexpected error occurred");
     }
   };
 
   if (loading) return <p>Loading voucher...</p>;
-  if (!voucher) return <p>Voucher not found.</p>;
+  if (!voucher) return <p>Voucher not found</p>;
 
   return (
     <div style={{ maxWidth: "900px", margin: "40px auto" }}>
       <h1 className="text-2xl font-bold mb-4">Sign Voucher</h1>
 
       <h2 className="font-bold mb-2">Salesperson Signature</h2>
-      <SignatureCanvas
+      <SignatureCanvas.default
         ref={salesSignRef}
         penColor="black"
         canvasProps={{ width: 500, height: 150, className: "border mb-2" }}
       />
       <button
-        type="button"
         onClick={() => handleClear("sales")}
         className="bg-gray-500 text-white px-2 py-1 mb-4"
       >
@@ -127,13 +124,12 @@ export default function VoucherSignature() {
       </button>
 
       <h2 className="font-bold mb-2">Customer Signature</h2>
-      <SignatureCanvas
+      <SignatureCanvas.default
         ref={customerSignRef}
         penColor="black"
         canvasProps={{ width: 500, height: 150, className: "border mb-2" }}
       />
       <button
-        type="button"
         onClick={() => handleClear("customer")}
         className="bg-gray-500 text-white px-2 py-1 mb-4"
       >
@@ -141,7 +137,6 @@ export default function VoucherSignature() {
       </button>
 
       <button
-        type="button"
         onClick={handleSubmit}
         disabled={saving}
         className="bg-black text-white px-4 py-2 mt-4"
