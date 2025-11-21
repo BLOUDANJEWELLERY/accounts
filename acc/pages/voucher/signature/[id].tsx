@@ -32,8 +32,9 @@ export default function VoucherSignature() {
   const [msg, setMsg] = useState("");
   const [hasSalesSigned, setHasSalesSigned] = useState(false);
   const [hasCustomerSigned, setHasCustomerSigned] = useState(false);
+  const [pdfBlobUrl, setPdfBlobUrl] = useState<string | null>(null);
+  const [showPdfPreview, setShowPdfPreview] = useState(false);
 
-  // Use the correct type from the library
   const salesSignRef = useRef<SignatureCanvas | null>(null);
   const customerSignRef = useRef<SignatureCanvas | null>(null);
 
@@ -56,6 +57,15 @@ export default function VoucherSignature() {
 
     fetchVoucher();
   }, [id]);
+
+  // Clean up blob URL when component unmounts
+  useEffect(() => {
+    return () => {
+      if (pdfBlobUrl) {
+        URL.revokeObjectURL(pdfBlobUrl);
+      }
+    };
+  }, [pdfBlobUrl]);
 
   const handleClear = (who: "sales" | "customer") => {
     if (who === "sales") {
@@ -82,12 +92,10 @@ export default function VoucherSignature() {
     }
     
     try {
-      // Check if signature is empty
       if (ref.current.isEmpty()) {
         return null;
       }
       
-      // Use the most basic method that should work
       return ref.current.toDataURL("image/png");
     } catch (err) {
       console.error("Error extracting signature:", err);
@@ -104,9 +112,6 @@ export default function VoucherSignature() {
     const salesSign = getSignatureData(salesSignRef);
     const customerSign = getSignatureData(customerSignRef);
 
-    console.log("Sales signature available:", !!salesSign);
-    console.log("Customer signature available:", !!customerSign);
-
     if (!salesSign || !customerSign) {
       alert("Failed to capture signature data. Please try signing again.");
       return;
@@ -114,6 +119,8 @@ export default function VoucherSignature() {
 
     setSaving(true);
     setMsg("");
+    setPdfBlobUrl(null);
+    setShowPdfPreview(false);
 
     try {
       const res = await fetch("/api/voucher/finalize", {
@@ -126,16 +133,29 @@ export default function VoucherSignature() {
         }),
       });
 
-      const data: { success: boolean; pdfUrl?: string; error?: string } = await res.json();
+      const data: { success: boolean; pdfUrl?: string; pdfData?: string; error?: string } = await res.json();
       
       if (data.success) {
-        setMsg("PDF generated and saved successfully!");
-        if (data.pdfUrl) {
+        setMsg("PDF generated successfully!");
+        
+        // If we have PDF data, create a blob URL for immediate preview
+        if (data.pdfData) {
+          // Convert base64 to blob
+          const byteCharacters = atob(data.pdfData);
+          const byteNumbers = new Array(byteCharacters.length);
+          for (let i = 0; i < byteCharacters.length; i++) {
+            byteNumbers[i] = byteCharacters.charCodeAt(i);
+          }
+          const byteArray = new Uint8Array(byteNumbers);
+          const blob = new Blob([byteArray], { type: 'application/pdf' });
+          const blobUrl = URL.createObjectURL(blob);
+          
+          setPdfBlobUrl(blobUrl);
+          setShowPdfPreview(true);
+        } else if (data.pdfUrl) {
+          // Fallback: open the B2 URL in new tab
           window.open(data.pdfUrl, "_blank");
         }
-        // Clear signatures after successful submission
-        handleClear("sales");
-        handleClear("customer");
       } else {
         setMsg("Error: " + data.error);
       }
@@ -144,6 +164,25 @@ export default function VoucherSignature() {
       setMsg("Unexpected error occurred");
     } finally {
       setSaving(false);
+    }
+  };
+
+  const handleDownloadPdf = () => {
+    if (pdfBlobUrl) {
+      const link = document.createElement('a');
+      link.href = pdfBlobUrl;
+      link.download = `voucher-${id}.pdf`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    }
+  };
+
+  const handleClosePreview = () => {
+    setShowPdfPreview(false);
+    if (pdfBlobUrl) {
+      URL.revokeObjectURL(pdfBlobUrl);
+      setPdfBlobUrl(null);
     }
   };
 
@@ -216,6 +255,47 @@ export default function VoucherSignature() {
         <p className={`mt-4 ${msg.includes("Error") ? "text-red-600" : "text-green-600"}`}>
           {msg}
         </p>
+      )}
+
+      {/* PDF Preview Modal */}
+      {showPdfPreview && pdfBlobUrl && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-6 max-w-4xl max-h-full overflow-auto">
+            <div className="flex justify-between items-center mb-4">
+              <h2 className="text-xl font-bold">Voucher PDF Preview</h2>
+              <button
+                onClick={handleClosePreview}
+                className="text-gray-500 hover:text-gray-700 text-2xl"
+              >
+                ×
+              </button>
+            </div>
+            
+            <div className="mb-4">
+              <embed
+                src={pdfBlobUrl}
+                type="application/pdf"
+                width="100%"
+                height="600px"
+              />
+            </div>
+            
+            <div className="flex gap-4">
+              <button
+                onClick={handleDownloadPdf}
+                className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700"
+              >
+                Download PDF
+              </button>
+              <button
+                onClick={handleClosePreview}
+                className="bg-gray-500 text-white px-4 py-2 rounded hover:bg-gray-600"
+              >
+                Close Preview
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );
