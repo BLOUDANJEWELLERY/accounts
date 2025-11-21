@@ -1,3 +1,4 @@
+//pages/voucher/signature/[id].tsc
 import { useState, useRef, useEffect } from "react";
 import { useRouter } from "next/router";
 import SignatureCanvas from "react-signature-canvas";
