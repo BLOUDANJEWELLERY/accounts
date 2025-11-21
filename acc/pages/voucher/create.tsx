@@ -27,11 +27,13 @@ export default function CreateVoucher() {
   const [msg, setMsg] = useState<string>("");
 
   // Fetch customers
-  useEffect(() => {
-    fetch("/api/customers")
-      .then((res) => res.json())
-      .then((data: { customers: Customer[] }) => setCustomers(data.customers || []));
-  }, []);
+ useEffect(() => {
+  fetch("/api/customers")
+    .then((res) => res.json())
+    .then((data: { customers: Customer[] }) => setCustomers(data.customers || []))
+    .catch(() => setCustomers([]));
+}, []);
+
 
   // Handle row changes
   const handleRowChange = (index: number, field: keyof InvoiceRow, value: string | number) => {
