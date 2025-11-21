@@ -64,12 +64,13 @@ export default function VoucherSignature() {
   // Safely get signature data URL
 
 // Safe function to get canvas data
-const getSignatureData = (ref: React.RefObject<SignatureCanvas>): string | null => {
-  if (!ref.current) return null;                // Ref not ready
+// Accepts ref that might be null
+const getSignatureData = (ref: React.RefObject<SignatureCanvas | null>): string | null => {
+  if (!ref.current) return null; // Ref not ready
   if (typeof ref.current.getTrimmedCanvas !== "function") return null; // Safety check
-  if (ref.current.isEmpty()) return null;       // Canvas empty
+  if (ref.current.isEmpty()) return null; // Canvas empty
   const canvas = ref.current.getTrimmedCanvas();
-  if (!canvas) return null;                     // Extra safety
+  if (!canvas) return null; // Extra safety
   return canvas.toDataURL("image/png");
 };
 
