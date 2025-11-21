@@ -1,7 +1,7 @@
 // pages/voucher/signature/[id].tsx
 import { useState, useRef, useEffect } from "react";
 import { useRouter } from "next/router";
-import SignatureCanvas from "react-signature-canvas";
+import SignaturePad from "signature_pad";
 
 interface VoucherRow {
   description: string;
@@ -31,9 +31,49 @@ export default function VoucherSignature() {
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState("");
 
-  // Fix: Use the correct type for the ref
-  const salesSignRef = useRef<SignatureCanvas | null>(null);
-  const customerSignRef = useRef<SignatureCanvas | null>(null);
+  const salesCanvasRef = useRef<HTMLCanvasElement>(null);
+  const customerCanvasRef = useRef<HTMLCanvasElement>(null);
+  const salesSignaturePad = useRef<SignaturePad | null>(null);
+  const customerSignaturePad = useRef<SignaturePad | null>(null);
+
+  // Initialize signature pads
+  useEffect(() => {
+    if (salesCanvasRef.current && customerCanvasRef.current) {
+      salesSignaturePad.current = new SignaturePad(salesCanvasRef.current, {
+        penColor: "black",
+        backgroundColor: "white"
+      });
+      
+      customerSignaturePad.current = new SignaturePad(customerCanvasRef.current, {
+        penColor: "black",
+        backgroundColor: "white"
+      });
+
+      // Handle window resize
+      const handleResize = () => {
+        if (salesCanvasRef.current && customerCanvasRef.current) {
+          const scale = window.devicePixelRatio || 1;
+          const width = 500;
+          const height = 150;
+
+          [salesCanvasRef.current, customerCanvasRef.current].forEach(canvas => {
+            canvas.width = width * scale;
+            canvas.height = height * scale;
+            canvas.getContext('2d')?.scale(scale, scale);
+            canvas.style.width = `${width}px`;
+            canvas.style.height = `${height}px`;
+          });
+        }
+      };
+
+      handleResize();
+      window.addEventListener('resize', handleResize);
+
+      return () => {
+        window.removeEventListener('resize', handleResize);
+      };
+    }
+  }, []);
 
   // Fetch voucher data
   useEffect(() => {
@@ -56,29 +96,20 @@ export default function VoucherSignature() {
   }, [id]);
 
   const handleClear = (who: "sales" | "customer") => {
-    if (who === "sales") {
-      salesSignRef.current?.clear();
-    } else {
-      customerSignRef.current?.clear();
+    if (who === "sales" && salesSignaturePad.current) {
+      salesSignaturePad.current.clear();
+    } else if (who === "customer" && customerSignaturePad.current) {
+      customerSignaturePad.current.clear();
     }
   };
 
-  const getSignatureData = (ref: React.RefObject<SignatureCanvas | null>): string | null => {
-    if (!ref.current) {
-      console.log("Ref is null");
+  const getSignatureData = (signaturePad: SignaturePad | null): string | null => {
+    if (!signaturePad || signaturePad.isEmpty()) {
       return null;
     }
     
     try {
-      const isEmpty = ref.current.isEmpty();
-      if (isEmpty) {
-        console.log("Signature canvas is empty");
-        return null;
-      }
-      
-      const dataUrl = ref.current.getTrimmedCanvas().toDataURL("image/png");
-      console.log("Signature extracted successfully");
-      return dataUrl;
+      return signaturePad.toDataURL();
     } catch (err) {
       console.error("Error extracting signature:", err);
       return null;
@@ -86,15 +117,11 @@ export default function VoucherSignature() {
   };
 
   const handleSubmit = async () => {
-    console.log("Submit clicked");
-    console.log("Sales ref:", salesSignRef.current);
-    console.log("Customer ref:", customerSignRef.current);
+    const salesSign = getSignatureData(salesSignaturePad.current);
+    const customerSign = getSignatureData(customerSignaturePad.current);
 
-    const salesSign = getSignatureData(salesSignRef);
-    const customerSign = getSignatureData(customerSignRef);
-
-    console.log("Sales signature data:", salesSign ? "exists" : "missing");
-    console.log("Customer signature data:", customerSign ? "exists" : "missing");
+    console.log("Sales signature:", salesSign ? "exists" : "missing");
+    console.log("Customer signature:", customerSign ? "exists" : "missing");
 
     if (!salesSign || !customerSign) {
       alert("Both signatures are required!");
@@ -139,11 +166,9 @@ export default function VoucherSignature() {
       <h1 className="text-2xl font-bold mb-4">Sign Voucher</h1>
 
       <h2 className="font-bold mb-2">Salesperson Signature</h2>
-      {/* Fix: Use SignatureCanvas directly without .default */}
-      <SignatureCanvas
-        ref={salesSignRef}
-        penColor="black"
-        canvasProps={{ width: 500, height: 150, className: "border mb-2" }}
+      <canvas
+        ref={salesCanvasRef}
+        style={{ border: "1px solid black", marginBottom: "8px" }}
       />
       <button
         onClick={() => handleClear("sales")}
@@ -153,10 +178,9 @@ export default function VoucherSignature() {
       </button>
 
       <h2 className="font-bold mb-2">Customer Signature</h2>
-      <SignatureCanvas
-        ref={customerSignRef}
-        penColor="black"
-        canvasProps={{ width: 500, height: 150, className: "border mb-2" }}
+      <canvas
+        ref={customerCanvasRef}
+        style={{ border: "1px solid black", marginBottom: "8px" }}
       />
       <button
         onClick={() => handleClear("customer")}

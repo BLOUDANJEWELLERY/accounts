@@ -16,7 +16,8 @@
     "prisma": "^6.11.0",
     "react": "19.2.0",
     "react-dom": "19.2.0",
-    "react-signature-canvas": "^1.1.0-alpha.2"
+    "react-signature-canvas": "^1.1.0-alpha.2",
+    "signature_pad": "^5.1.2"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
