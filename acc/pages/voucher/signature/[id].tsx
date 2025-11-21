@@ -30,6 +30,7 @@ export default function VoucherSignature() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState("");
+  const [padsInitialized, setPadsInitialized] = useState(false);
 
   const salesCanvasRef = useRef<HTMLCanvasElement>(null);
   const customerCanvasRef = useRef<HTMLCanvasElement>(null);
@@ -38,41 +39,44 @@ export default function VoucherSignature() {
 
   // Initialize signature pads
   useEffect(() => {
-    if (salesCanvasRef.current && customerCanvasRef.current) {
-      salesSignaturePad.current = new SignaturePad(salesCanvasRef.current, {
-        penColor: "black",
-        backgroundColor: "white"
-      });
-      
-      customerSignaturePad.current = new SignaturePad(customerCanvasRef.current, {
-        penColor: "black",
-        backgroundColor: "white"
-      });
+    const initializeSignaturePads = () => {
+      if (salesCanvasRef.current && customerCanvasRef.current) {
+        // Set canvas dimensions first
+        const width = 500;
+        const height = 150;
 
-      // Handle window resize
-      const handleResize = () => {
-        if (salesCanvasRef.current && customerCanvasRef.current) {
-          const scale = window.devicePixelRatio || 1;
-          const width = 500;
-          const height = 150;
+        [salesCanvasRef.current, customerCanvasRef.current].forEach(canvas => {
+          canvas.width = width;
+          canvas.height = height;
+          canvas.style.width = `${width}px`;
+          canvas.style.height = `${height}px`;
+        });
 
-          [salesCanvasRef.current, customerCanvasRef.current].forEach(canvas => {
-            canvas.width = width * scale;
-            canvas.height = height * scale;
-            canvas.getContext('2d')?.scale(scale, scale);
-            canvas.style.width = `${width}px`;
-            canvas.style.height = `${height}px`;
-          });
-        }
-      };
+        // Initialize signature pads
+        salesSignaturePad.current = new SignaturePad(salesCanvasRef.current, {
+          minWidth: 1,
+          maxWidth: 3,
+          penColor: "rgb(0, 0, 0)",
+          backgroundColor: "rgb(255, 255, 255)",
+          throttle: 16
+        });
+        
+        customerSignaturePad.current = new SignaturePad(customerCanvasRef.current, {
+          minWidth: 1,
+          maxWidth: 3,
+          penColor: "rgb(0, 0, 0)",
+          backgroundColor: "rgb(255, 255, 255)",
+          throttle: 16
+        });
 
-      handleResize();
-      window.addEventListener('resize', handleResize);
+        setPadsInitialized(true);
+        console.log("Signature pads initialized");
+      }
+    };
 
-      return () => {
-        window.removeEventListener('resize', handleResize);
-      };
-    }
+    // Small delay to ensure DOM is ready
+    const timer = setTimeout(initializeSignaturePads, 100);
+    return () => clearTimeout(timer);
   }, []);
 
   // Fetch voucher data
@@ -117,6 +121,11 @@ export default function VoucherSignature() {
   };
 
   const handleSubmit = async () => {
+    if (!padsInitialized) {
+      alert("Signature pads are not ready yet. Please wait a moment.");
+      return;
+    }
+
     const salesSign = getSignatureData(salesSignaturePad.current);
     const customerSign = getSignatureData(customerSignaturePad.current);
 
@@ -162,41 +171,52 @@ export default function VoucherSignature() {
   if (!voucher) return <p>Voucher not found</p>;
 
   return (
-    <div style={{ maxWidth: "900px", margin: "40px auto" }}>
+    <div style={{ maxWidth: "900px", margin: "40px auto", padding: "20px" }}>
       <h1 className="text-2xl font-bold mb-4">Sign Voucher</h1>
 
-      <h2 className="font-bold mb-2">Salesperson Signature</h2>
-      <canvas
-        ref={salesCanvasRef}
-        style={{ border: "1px solid black", marginBottom: "8px" }}
-      />
-      <button
-        onClick={() => handleClear("sales")}
-        className="bg-gray-500 text-white px-2 py-1 mb-4"
-      >
-        Clear
-      </button>
+      <div className="mb-6">
+        <h2 className="font-bold mb-2">Salesperson Signature</h2>
+        <div style={{ border: "1px solid #ccc", background: "white", display: "inline-block" }}>
+          <canvas
+            ref={salesCanvasRef}
+            style={{ display: "block", cursor: "crosshair" }}
+          />
+        </div>
+        <br />
+        <button
+          onClick={() => handleClear("sales")}
+          className="bg-gray-500 text-white px-3 py-1 mt-2 rounded"
+        >
+          Clear Sales Signature
+        </button>
+      </div>
 
-      <h2 className="font-bold mb-2">Customer Signature</h2>
-      <canvas
-        ref={customerCanvasRef}
-        style={{ border: "1px solid black", marginBottom: "8px" }}
-      />
-      <button
-        onClick={() => handleClear("customer")}
-        className="bg-gray-500 text-white px-2 py-1 mb-4"
-      >
-        Clear
-      </button>
+      <div className="mb-6">
+        <h2 className="font-bold mb-2">Customer Signature</h2>
+        <div style={{ border: "1px solid #ccc", background: "white", display: "inline-block" }}>
+          <canvas
+            ref={customerCanvasRef}
+            style={{ display: "block", cursor: "crosshair" }}
+          />
+        </div>
+        <br />
+        <button
+          onClick={() => handleClear("customer")}
+          className="bg-gray-500 text-white px-3 py-1 mt-2 rounded"
+        >
+          Clear Customer Signature
+        </button>
+      </div>
 
       <button
         onClick={handleSubmit}
-        disabled={saving}
-        className="bg-black text-white px-4 py-2 mt-4"
+        disabled={saving || !padsInitialized}
+        className="bg-black text-white px-4 py-2 mt-4 rounded disabled:bg-gray-400"
       >
         {saving ? "Generating PDF..." : "Generate PDF"}
       </button>
 
+      {!padsInitialized && <p className="mt-2 text-yellow-600">Initializing signature pads...</p>}
       {msg && <p className="mt-4 text-blue-600">{msg}</p>}
     </div>
   );
