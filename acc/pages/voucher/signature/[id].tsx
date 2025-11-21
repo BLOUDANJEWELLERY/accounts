@@ -58,11 +58,12 @@ export default function VoucherSignature() {
   };
 
   // Type-safe signature getter
-  const getSignatureData = (ref: React.RefObject<SignatureCanvas>): string | null => {
-    if (!ref.current) return null;
-    if (ref.current.isEmpty()) return null;
-    return ref.current.getTrimmedCanvas().toDataURL("image/png");
-  };
+// Type-safe signature getter
+const getSignatureData = (ref: React.RefObject<SignatureCanvas | null>): string | null => {
+  if (!ref.current) return null;
+  if (ref.current.isEmpty()) return null;
+  return ref.current.getTrimmedCanvas().toDataURL("image/png");
+};
 
   const handleSubmit = async () => {
     const salesSign = getSignatureData(salesSignRef);
