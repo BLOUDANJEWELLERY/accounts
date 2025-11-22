@@ -31,6 +31,15 @@ interface LedgerEntry {
   pdfUrl?: string;
 }
 
+// Add interface for voucher row to replace 'any'
+interface VoucherRow {
+  description: string;
+  // Add other properties that might be in the rows JSON
+  amount?: number;
+  item?: string;
+  // ... other possible properties
+}
+
 export default function LedgerPage() {
   const router = useRouter();
   const { id } = router.query;
@@ -77,8 +86,8 @@ export default function LedgerPage() {
         );
 
         sortedVouchers.forEach((voucher) => {
-          const rows = JSON.parse(voucher.rows);
-          const description = rows.map((row: any) => row.description).join(", ");
+          const rows: VoucherRow[] = JSON.parse(voucher.rows);
+          const description = rows.map((row: VoucherRow) => row.description).join(", ");
 
           if (voucher.voucherType === "INV") {
             // INV (Invoice) - Debit (positive)
@@ -253,7 +262,7 @@ export default function LedgerPage() {
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
               </svg>
               <h3 className="text-lg font-medium text-gray-900 mb-2">No transactions yet</h3>
-              <p className="text-gray-500">This customer hasn't made any transactions</p>
+              <p className="text-gray-500">This customer hasn&apos;t made any transactions</p>
             </div>
           ) : (
             <div className="overflow-x-auto">
