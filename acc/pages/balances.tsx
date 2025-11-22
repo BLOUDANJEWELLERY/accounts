@@ -28,7 +28,6 @@ interface CustomerBalance {
   voucherCount: number;
 }
 
-// Type for sortable fields
 type SortableField = 'customer' | 'goldBalance' | 'kwdBalance' | 'lastTransactionDate' | 'voucherCount';
 
 export default function BalancesPage() {
@@ -47,17 +46,76 @@ export default function BalancesPage() {
         setLoading(true);
         setError(null);
 
+        console.log("Starting to fetch balances...");
+
         // Fetch all customers
         const customersRes = await fetch("/api/customers");
         if (!customersRes.ok) {
           throw new Error("Failed to fetch customers");
         }
         const customersData: { customers: Customer[] } = await customersRes.json();
+        console.log("Fetched customers:", customersData.customers.length);
 
         // For each customer, fetch their vouchers and calculate balances
         const balancesPromises = customersData.customers.map(async (customer) => {
-          const vouchersRes = await fetch(`/api/vouchers/customer/${customer.id}`);
-          if (!vouchersRes.ok) {
+          try {
+            console.log(`Fetching vouchers for customer: ${customer.name} (${customer.id})`);
+            const vouchersRes = await fetch(`/api/vouchers/customer/${customer.id}`);
+            
+            if (!vouchersRes.ok) {
+              console.warn(`No vouchers found for customer ${customer.name}, status: ${vouchersRes.status}`);
+              return {
+                customer,
+                goldBalance: 0,
+                kwdBalance: 0,
+                lastTransactionDate: null,
+                voucherCount: 0,
+              };
+            }
+
+            const vouchersData: { vouchers: Voucher[] } = await vouchersRes.json();
+            const vouchers = vouchersData.vouchers;
+            console.log(`Found ${vouchers.length} vouchers for customer ${customer.name}`);
+
+            // Calculate balances
+            let goldBalance = 0;
+            let kwdBalance = 0;
+            let lastTransactionDate: string | null = null;
+
+            if (vouchers.length > 0) {
+              // Sort vouchers by date to process in chronological order
+              const sortedVouchers = [...vouchers].sort(
+                (a, b) => new Date(a.date).getTime() - new Date(b.date).getTime()
+              );
+
+              // Get the latest transaction date
+              lastTransactionDate = new Date(sortedVouchers[sortedVouchers.length - 1].date).toLocaleDateString();
+
+              // Calculate running balances chronologically
+              sortedVouchers.forEach((voucher) => {
+                if (voucher.voucherType === "INV") {
+                  // Invoice - increases what customer owes (debit)
+                  goldBalance += voucher.totalNet;
+                  kwdBalance += voucher.totalKWD;
+                } else if (voucher.voucherType === "REC") {
+                  // Receipt - decreases what customer owes (credit)
+                  goldBalance -= voucher.totalNet;
+                  kwdBalance -= voucher.totalKWD;
+                }
+              });
+
+              console.log(`Calculated balances for ${customer.name}: Gold=${goldBalance}, KWD=${kwdBalance}`);
+            }
+
+            return {
+              customer,
+              goldBalance,
+              kwdBalance,
+              lastTransactionDate,
+              voucherCount: vouchers.length,
+            };
+          } catch (err) {
+            console.error(`Error processing customer ${customer.name}:`, err);
             return {
               customer,
               goldBalance: 0,
@@ -66,45 +124,10 @@ export default function BalancesPage() {
               voucherCount: 0,
             };
           }
-
-          const vouchersData: { vouchers: Voucher[] } = await vouchersRes.json();
-          const vouchers = vouchersData.vouchers;
-
-          // Calculate balances
-          let goldBalance = 0;
-          let kwdBalance = 0;
-          let lastTransactionDate: string | null = null;
-
-          // Sort vouchers by date to get the latest transaction
-          const sortedVouchers = [...vouchers].sort(
-            (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()
-          );
-
-          if (sortedVouchers.length > 0) {
-            lastTransactionDate = new Date(sortedVouchers[0].date).toLocaleDateString();
-          }
-
-          // Calculate running balances
-          sortedVouchers.forEach((voucher) => {
-            if (voucher.voucherType === "INV") {
-              goldBalance += voucher.totalNet;
-              kwdBalance += voucher.totalKWD;
-            } else {
-              goldBalance -= voucher.totalNet;
-              kwdBalance -= voucher.totalKWD;
-            }
-          });
-
-          return {
-            customer,
-            goldBalance,
-            kwdBalance,
-            lastTransactionDate,
-            voucherCount: vouchers.length,
-          };
         });
 
         const balances = await Promise.all(balancesPromises);
+        console.log("Final balances:", balances);
         setCustomerBalances(balances);
       } catch (err) {
         console.error("Error fetching balances:", err);
@@ -245,6 +268,23 @@ export default function BalancesPage() {
           </div>
         </div>
 
+        {/* Debug Info - Remove in production */}
+        {process.env.NODE_ENV === 'development' && (
+          <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 mb-6">
+            <div className="flex items-center">
+              <svg className="w-5 h-5 text-yellow-600 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.35 16.5c-.77.833.192 2.5 1.732 2.5z" />
+              </svg>
+              <span className="text-sm font-medium text-yellow-800">Debug Info</span>
+            </div>
+            <div className="mt-2 text-sm text-yellow-700">
+              <p>Total customers: {customerBalances.length}</p>
+              <p>Customers with transactions: {customerBalances.filter(b => b.voucherCount > 0).length}</p>
+              <p>Total transactions: {customerBalances.reduce((sum, b) => sum + b.voucherCount, 0)}</p>
+            </div>
+          </div>
+        )}
+
         {/* Search and Controls */}
         <div className="bg-white rounded-2xl shadow-xl p-6 mb-6">
           <div className="flex flex-col sm:flex-row gap-4 justify-between items-center">
@@ -368,7 +408,9 @@ export default function BalancesPage() {
                         {balance.kwdBalance.toFixed(3)} KWD
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 text-center">
-                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+                        <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                          balance.voucherCount > 0 ? "bg-blue-100 text-blue-800" : "bg-gray-100 text-gray-800"
+                        }`}>
                           {balance.voucherCount}
                         </span>
                       </td>
