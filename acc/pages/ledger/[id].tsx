@@ -226,40 +226,43 @@ export default function LedgerPage() {
     };
   };
 
+  // Create opening balance entry
+  const createOpeningBalanceEntry = (): LedgerEntry => ({
+    date: dateRange.start,
+    voucherId: "opening-balance",
+    type: "INV", // Use a valid type
+    description: "Balance brought forward",
+    goldDebit: 0,
+    goldCredit: 0,
+    goldBalance: calculateOpeningBalance().gold,
+    kwdDebit: 0,
+    kwdCredit: 0,
+    kwdBalance: calculateOpeningBalance().kwd,
+    isOpeningBalance: true,
+  });
+
+  // Create closing balance entry
+  const createClosingBalanceEntry = (): LedgerEntry => ({
+    date: dateRange.end,
+    voucherId: "closing-balance",
+    type: "INV", // Use a valid type
+    description: "Balance carried forward",
+    goldDebit: 0,
+    goldCredit: 0,
+    goldBalance: calculateClosingBalance().gold,
+    kwdDebit: 0,
+    kwdCredit: 0,
+    kwdBalance: calculateClosingBalance().kwd,
+    isClosingBalance: true,
+  });
+
   // Add opening and closing balance rows only if we have a date range
-  const openingBalance = calculateOpeningBalance();
-  const closingBalance = calculateClosingBalance();
-  
   const entriesWithBalances: LedgerEntry[] = [
     // Opening balance row (only show if we have a date range)
-    ...(dateRange.start ? [{
-      date: dateRange.start,
-      voucherId: "opening-balance",
-      type: "INV",
-      description: "Balance brought forward",
-      goldDebit: 0,
-      goldCredit: 0,
-      goldBalance: openingBalance.gold,
-      kwdDebit: 0,
-      kwdCredit: 0,
-      kwdBalance: openingBalance.kwd,
-      isOpeningBalance: true,
-    }] : []),
+    ...(dateRange.start ? [createOpeningBalanceEntry()] : []),
     ...filteredLedgerEntries,
     // Closing balance row (only show if we have a date range)
-    ...(dateRange.end ? [{
-      date: dateRange.end,
-      voucherId: "closing-balance",
-      type: "INV",
-      description: "Balance carried forward",
-      goldDebit: 0,
-      goldCredit: 0,
-      goldBalance: closingBalance.gold,
-      kwdDebit: 0,
-      kwdCredit: 0,
-      kwdBalance: closingBalance.kwd,
-      isClosingBalance: true,
-    }] : [])
+    ...(dateRange.end ? [createClosingBalanceEntry()] : [])
   ];
 
   // Calculate totals for filtered results only (excluding opening/closing rows)
@@ -500,14 +503,14 @@ export default function LedgerPage() {
             <div className="flex gap-4 mt-4 sm:mt-0">
               <div className="text-center">
                 <p className="text-sm text-gray-600">Period Gold Change</p>
-                <p className={`text-lg font-semibold ${(closingBalance.gold - openingBalance.gold) >= 0 ? 'text-purple-600' : 'text-red-600'}`}>
-                  {(closingBalance.gold - openingBalance.gold).toFixed(3)} g
+                <p className={`text-lg font-semibold ${(calculateClosingBalance().gold - calculateOpeningBalance().gold) >= 0 ? 'text-purple-600' : 'text-red-600'}`}>
+                  {(calculateClosingBalance().gold - calculateOpeningBalance().gold).toFixed(3)} g
                 </p>
               </div>
               <div className="text-center">
                 <p className="text-sm text-gray-600">Period KWD Change</p>
-                <p className={`text-lg font-semibold ${(closingBalance.kwd - openingBalance.kwd) >= 0 ? 'text-blue-600' : 'text-orange-600'}`}>
-                  {(closingBalance.kwd - openingBalance.kwd).toFixed(3)} KWD
+                <p className={`text-lg font-semibold ${(calculateClosingBalance().kwd - calculateOpeningBalance().kwd) >= 0 ? 'text-blue-600' : 'text-orange-600'}`}>
+                  {(calculateClosingBalance().kwd - calculateOpeningBalance().kwd).toFixed(3)} KWD
                 </p>
               </div>
             </div>
@@ -662,9 +665,9 @@ export default function LedgerPage() {
                       {totalGoldCredit.toFixed(3)}
                     </td>
                     <td className={`px-6 py-4 whitespace-nowrap text-sm text-right font-mono font-bold ${
-                      closingBalance.gold >= 0 ? "text-purple-600" : "text-red-600"
+                      calculateClosingBalance().gold >= 0 ? "text-purple-600" : "text-red-600"
                     }`}>
-                      {closingBalance.gold.toFixed(3)}
+                      {calculateClosingBalance().gold.toFixed(3)}
                     </td>
                     {/* KWD Totals */}
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-right text-gray-900 font-mono font-bold">
@@ -674,9 +677,9 @@ export default function LedgerPage() {
                       {totalKWDCredit.toFixed(3)}
                     </td>
                     <td className={`px-6 py-4 whitespace-nowrap text-sm text-right font-mono font-bold ${
-                      closingBalance.kwd >= 0 ? "text-indigo-600" : "text-orange-600"
+                      calculateClosingBalance().kwd >= 0 ? "text-indigo-600" : "text-orange-600"
                     }`}>
-                      {closingBalance.kwd.toFixed(3)}
+                      {calculateClosingBalance().kwd.toFixed(3)}
                     </td>
                     <td></td>
                   </tr>
