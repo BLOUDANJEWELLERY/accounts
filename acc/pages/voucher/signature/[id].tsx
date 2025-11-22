@@ -1,7 +1,12 @@
 // pages/voucher/signature/[id].tsx
 import { useState, useRef, useEffect } from "react";
 import { useRouter } from "next/router";
-import SignatureCanvas from "react-signature-canvas";
+import dynamic from 'next/dynamic';
+
+// Dynamically import SignatureCanvas to avoid SSR issues
+const SignatureCanvas = dynamic(() => import('react-signature-canvas'), {
+  ssr: false,
+});
 
 interface VoucherRow {
   description: string;
@@ -43,23 +48,63 @@ export default function VoucherSignature() {
   const [pdfBlobUrl, setPdfBlobUrl] = useState<string | null>(null);
   const [showPdfPreview, setShowPdfPreview] = useState(false);
   const [activeSignature, setActiveSignature] = useState<"sales" | "customer" | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
   const salesSignRef = useRef<SignatureCanvas | null>(null);
   const customerSignRef = useRef<SignatureCanvas | null>(null);
   const signatureModalRef = useRef<HTMLDivElement>(null);
 
-  // Fetch voucher data
+  // Safe data access helper functions
+  const getCustomerName = () => voucher?.customer?.name || "Customer Name Not Available";
+  const getAccountNo = () => voucher?.customer?.accountNo || "N/A";
+  const getCivilId = () => voucher?.customer?.civilId || "N/A";
+  const getPhone = () => voucher?.customer?.phone || "N/A";
+  const getVoucherType = () => voucher?.voucherType || "INV";
+  const getVoucherDate = () => voucher?.date ? new Date(voucher.date).toLocaleDateString() : new Date().toLocaleDateString();
+  const getVoucherId = () => voucher?.id ? voucher.id.slice(-8).toUpperCase() : "N/A";
+
+  // Fetch voucher data with error handling
   useEffect(() => {
     if (!id) return;
 
     const fetchVoucher = async () => {
       try {
         setLoading(true);
+        setError(null);
         const res = await fetch(`/api/voucher/${id}`);
-        const data: { voucher: Voucher } = await res.json();
+        
+        if (!res.ok) {
+          throw new Error(`Failed to fetch voucher: ${res.status}`);
+        }
+        
+        const data = await res.json();
+        
+        if (!data.voucher) {
+          throw new Error("Voucher data not found in response");
+        }
+
+        // Validate required fields
+        const requiredFields = ['id', 'accountId', 'voucherType', 'rows', 'totalNet', 'totalKWD', 'date'];
+        const missingFields = requiredFields.filter(field => !data.voucher[field]);
+        
+        if (missingFields.length > 0) {
+          throw new Error(`Missing required fields: ${missingFields.join(', ')}`);
+        }
+
+        // Ensure customer object exists with fallbacks
+        if (!data.voucher.customer) {
+          data.voucher.customer = {
+            name: "Unknown Customer",
+            accountNo: "N/A",
+            phone: "N/A",
+            civilId: "N/A"
+          };
+        }
+
         setVoucher(data.voucher);
       } catch (err) {
-        console.error(err);
+        console.error("Error fetching voucher:", err);
+        setError(err instanceof Error ? err.message : "Failed to load voucher");
       } finally {
         setLoading(false);
       }
@@ -160,31 +205,36 @@ export default function VoucherSignature() {
         }),
       });
 
-      const data: { success: boolean; pdfUrl?: string; pdfData?: string; error?: string } = await res.json();
+      const data = await res.json();
       
       if (data.success) {
         setMsg("PDF generated successfully!");
         
         // If we have PDF data, create a blob URL for immediate preview
         if (data.pdfData) {
-          // Convert base64 to blob
-          const byteCharacters = atob(data.pdfData);
-          const byteNumbers = new Array(byteCharacters.length);
-          for (let i = 0; i < byteCharacters.length; i++) {
-            byteNumbers[i] = byteCharacters.charCodeAt(i);
+          try {
+            // Convert base64 to blob
+            const byteCharacters = atob(data.pdfData);
+            const byteNumbers = new Array(byteCharacters.length);
+            for (let i = 0; i < byteCharacters.length; i++) {
+              byteNumbers[i] = byteCharacters.charCodeAt(i);
+            }
+            const byteArray = new Uint8Array(byteNumbers);
+            const blob = new Blob([byteArray], { type: 'application/pdf' });
+            const blobUrl = URL.createObjectURL(blob);
+            
+            setPdfBlobUrl(blobUrl);
+            setShowPdfPreview(true);
+          } catch (err) {
+            console.error("Error creating PDF blob:", err);
+            setMsg("PDF generated but preview unavailable");
           }
-          const byteArray = new Uint8Array(byteNumbers);
-          const blob = new Blob([byteArray], { type: 'application/pdf' });
-          const blobUrl = URL.createObjectURL(blob);
-          
-          setPdfBlobUrl(blobUrl);
-          setShowPdfPreview(true);
         } else if (data.pdfUrl) {
           // Fallback: open the B2 URL in new tab
           window.open(data.pdfUrl, "_blank");
         }
       } else {
-        setMsg("Error: " + data.error);
+        setMsg("Error: " + (data.error || "Unknown error"));
       }
     } catch (err) {
       console.error(err);
@@ -213,6 +263,9 @@ export default function VoucherSignature() {
     }
   };
 
+  // Calculate totals safely
+  const totalWeightAfterDiscount = voucher?.rows?.reduce((acc, r) => acc + (r.weightAfterDiscount || 0), 0) || 0;
+
   if (loading) return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center">
       <div className="text-center">
@@ -222,15 +275,39 @@ export default function VoucherSignature() {
     </div>
   );
   
-  if (!voucher) return (
+  if (error) return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center">
-      <div className="text-center">
-        <p className="text-red-600 text-lg">Voucher not found</p>
+      <div className="text-center bg-white p-8 rounded-2xl shadow-xl">
+        <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
+          <svg className="w-8 h-8 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+          </svg>
+        </div>
+        <h2 className="text-2xl font-bold text-gray-900 mb-2">Error Loading Voucher</h2>
+        <p className="text-gray-600 mb-4">{error}</p>
+        <button
+          onClick={() => router.back()}
+          className="bg-indigo-600 text-white px-6 py-2 rounded-lg hover:bg-indigo-700 transition-colors"
+        >
+          Go Back
+        </button>
       </div>
     </div>
   );
 
-  const totalWeightAfterDiscount = voucher.rows.reduce((acc, r) => acc + (r.weightAfterDiscount || 0), 0);
+  if (!voucher) return (
+    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center">
+      <div className="text-center">
+        <p className="text-red-600 text-lg">Voucher not found</p>
+        <button
+          onClick={() => router.back()}
+          className="mt-4 bg-indigo-600 text-white px-6 py-2 rounded-lg hover:bg-indigo-700 transition-colors"
+        >
+          Go Back
+        </button>
+      </div>
+    </div>
+  );
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 py-8 px-4 sm:px-6 lg:px-8">
@@ -243,7 +320,7 @@ export default function VoucherSignature() {
             </svg>
           </div>
           <h1 className="text-4xl font-bold text-gray-900 mb-2">
-            {voucher.voucherType === "INV" ? "INVOICE" : "RECEIPT"}
+            {getVoucherType() === "INV" ? "INVOICE" : "RECEIPT"}
           </h1>
           <p className="text-lg text-gray-600">Please review and sign the document</p>
         </div>
@@ -262,16 +339,16 @@ export default function VoucherSignature() {
               <div className="text-center">
                 <div className="inline-block bg-gray-100 px-4 py-2 rounded-lg">
                   <p className="text-sm text-gray-600">Voucher No</p>
-                  <p className="text-xl font-bold text-indigo-600">{voucher.id.slice(-8).toUpperCase()}</p>
+                  <p className="text-xl font-bold text-indigo-600">{getVoucherId()}</p>
                 </div>
                 <p className="text-gray-600 mt-2">
-                  Date: {new Date(voucher.date).toLocaleDateString()}
+                  Date: {getVoucherDate()}
                 </p>
               </div>
               <div className="text-right">
-                <p className="text-gray-600">Account No: <span className="font-semibold">{voucher.customer.accountNo}</span></p>
-                <p className="text-gray-600">Civil ID: <span className="font-semibold">{voucher.customer.civilId}</span></p>
-                <p className="text-gray-600">Phone: <span className="font-semibold">{voucher.customer.phone}</span></p>
+                <p className="text-gray-600">Account No: <span className="font-semibold">{getAccountNo()}</span></p>
+                <p className="text-gray-600">Civil ID: <span className="font-semibold">{getCivilId()}</span></p>
+                <p className="text-gray-600">Phone: <span className="font-semibold">{getPhone()}</span></p>
               </div>
             </div>
           </div>
@@ -279,7 +356,7 @@ export default function VoucherSignature() {
           {/* Customer Info */}
           <div className="mb-6">
             <h3 className="text-lg font-semibold text-gray-900 mb-2">Customer Information</h3>
-            <p className="text-gray-700">{voucher.customer.name}</p>
+            <p className="text-gray-700">{getCustomerName()}</p>
           </div>
 
           {/* Items Table */}
@@ -291,7 +368,7 @@ export default function VoucherSignature() {
                   <tr className="bg-gray-50">
                     <th className="border border-gray-300 px-4 py-3 text-left font-semibold text-gray-700">Description</th>
                     <th className="border border-gray-300 px-4 py-3 text-center font-semibold text-gray-700">Weight</th>
-                    {voucher.voucherType === "INV" ? (
+                    {getVoucherType() === "INV" ? (
                       <>
                         <th className="border border-gray-300 px-4 py-3 text-center font-semibold text-gray-700">Purity</th>
                         <th className="border border-gray-300 px-4 py-3 text-center font-semibold text-gray-700">Making Charges</th>
@@ -309,21 +386,21 @@ export default function VoucherSignature() {
                   </tr>
                 </thead>
                 <tbody>
-                  {voucher.rows.map((row, idx) => (
+                  {voucher.rows?.map((row, idx) => (
                     <tr key={idx} className="hover:bg-gray-50">
                       <td className="border border-gray-300 px-4 py-3">{row.description}</td>
                       <td className="border border-gray-300 px-4 py-3 text-center">{row.weight.toFixed(3)}</td>
-                      {voucher.voucherType === "INV" ? (
+                      {getVoucherType() === "INV" ? (
                         <>
-                          <td className="border border-gray-300 px-4 py-3 text-center">{row.purity}</td>
-                          <td className="border border-gray-300 px-4 py-3 text-center">{row.makingCharges?.toFixed(2)}</td>
+                          <td className="border border-gray-300 px-4 py-3 text-center">{row.purity || "N/A"}</td>
+                          <td className="border border-gray-300 px-4 py-3 text-center">{row.makingCharges?.toFixed(2) || "0.00"}</td>
                           <td className="border border-gray-300 px-4 py-3 text-center">{row.kwd.toFixed(3)}</td>
                         </>
                       ) : (
                         <>
-                          <td className="border border-gray-300 px-4 py-3 text-center">{row.discountPercent?.toFixed(1)}%</td>
-                          <td className="border border-gray-300 px-4 py-3 text-center">{row.purity}</td>
-                          <td className="border border-gray-300 px-4 py-3 text-center">{row.weightAfterDiscount?.toFixed(3)}</td>
+                          <td className="border border-gray-300 px-4 py-3 text-center">{row.discountPercent?.toFixed(1) || "0.0"}%</td>
+                          <td className="border border-gray-300 px-4 py-3 text-center">{row.purity || "N/A"}</td>
+                          <td className="border border-gray-300 px-4 py-3 text-center">{row.weightAfterDiscount?.toFixed(3) || "0.000"}</td>
                           <td className="border border-gray-300 px-4 py-3 text-center">{row.kwd.toFixed(3)}</td>
                         </>
                       )}
@@ -339,13 +416,13 @@ export default function VoucherSignature() {
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
             <div className="text-center">
               <p className="text-sm text-gray-600 mb-1">
-                {voucher.voucherType === "INV" ? "Total Net Weight" : "Total Weight After Discount"}
+                {getVoucherType() === "INV" ? "Total Net Weight" : "Total Weight After Discount"}
               </p>
               <p className="text-2xl font-bold text-indigo-700">
-                {voucher.voucherType === "INV" ? voucher.totalNet.toFixed(3) : totalWeightAfterDiscount.toFixed(3)}
+                {getVoucherType() === "INV" ? voucher.totalNet.toFixed(3) : totalWeightAfterDiscount.toFixed(3)}
               </p>
             </div>
-            {voucher.voucherType === "REC" && (
+            {getVoucherType() === "REC" && (
               <div className="text-center">
                 <p className="text-sm text-gray-600 mb-1">Total Net Weight</p>
                 <p className="text-2xl font-bold text-purple-700">{voucher.totalNet.toFixed(3)}</p>
