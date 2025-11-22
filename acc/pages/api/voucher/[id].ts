@@ -18,7 +18,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       where: { id },
       select: {
         id: true,
-        accountId: true,
+        accountId: true,   // this is Customer.id
         voucherType: true,
         date: true,
         rows: true,
@@ -31,9 +31,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       return res.status(404).json({ success: false, error: "Voucher not found" });
     }
 
-    // Find customer where accountNo === voucher.accountId
-    const customer = await prisma.customer.findFirst({
-      where: { accountNo: voucher.accountId },
+    // Fetch the customer using Voucher.accountId → Customer.id
+    const customer = await prisma.customer.findUnique({
+      where: { id: voucher.accountId },
       select: {
         name: true,
         accountNo: true,
@@ -42,9 +42,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       },
     });
 
-    // Parse JSON rows if needed
-    const rows =
-      typeof voucher.rows === "string" ? JSON.parse(voucher.rows) : voucher.rows;
+    // Parse rows if stored as JSON string
+    const rows = typeof voucher.rows === "string" ? JSON.parse(voucher.rows) : voucher.rows;
 
     return res.status(200).json({
       success: true,
