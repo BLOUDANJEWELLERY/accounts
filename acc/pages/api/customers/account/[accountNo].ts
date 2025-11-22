@@ -1,39 +1,25 @@
-import { NextApiRequest, NextApiResponse } from 'next';
+import type { NextApiRequest, NextApiResponse } from "next";
 import { prisma } from "../../../../server/prisma";
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   const { accountNo } = req.query;
 
-  if (req.method === 'GET') {
-    try {
-      // First get the customer to verify they exist
-      const customer = await prisma.customer.findUnique({
-        where: {
-          accountNo: accountNo as string,
-        },
-      });
+  if (typeof accountNo !== "string") {
+    return res.status(400).json({ error: "Invalid account number" });
+  }
 
-      if (!customer) {
-        return res.status(404).json({ error: 'Customer not found' });
-      }
+  try {
+    const customer = await prisma.customer.findUnique({
+      where: { accountNo },
+    });
 
-      // Then fetch vouchers for this customer using accountId
-      const vouchers = await prisma.voucher.findMany({
-        where: {
-          accountId: customer.id, // Using customer ID as accountId in Voucher model
-        },
-        orderBy: {
-          date: 'asc',
-        },
-      });
-
-      res.status(200).json({ vouchers });
-    } catch (error) {
-      console.error('Error fetching vouchers:', error);
-      res.status(500).json({ error: 'Failed to fetch vouchers' });
+    if (!customer) {
+      return res.status(404).json({ error: "Customer not found" });
     }
-  } else {
-    res.setHeader('Allow', ['GET']);
-    res.status(405).end(`Method ${req.method} Not Allowed`);
+
+    res.status(200).json({ customer });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Server error" });
   }
 }
