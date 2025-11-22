@@ -3,20 +3,14 @@ import { useState, useRef, useEffect } from "react";
 import { useRouter } from "next/router";
 import dynamic from 'next/dynamic';
 
-// Dynamically import SignatureCanvas to avoid SSR issues
-const SignatureCanvas = dynamic(() => import('react-signature-canvas'), {
-  ssr: false,
-});
-
-// Define the type for SignatureCanvas ref
-type SignatureCanvasType = {
-  clear: () => void;
-  isEmpty: () => boolean;
-  toDataURL: (type?: string, encoderOptions?: number) => string;
-  fromDataURL: (dataUrl: string) => void;
-  off: () => void;
-  on: () => void;
-};
+// Dynamically import SignatureCanvas to avoid SSR issues with proper typing
+const SignatureCanvas = dynamic(
+  () => import('react-signature-canvas').then((mod) => mod.default),
+  {
+    ssr: false,
+    loading: () => <div className="w-full h-48 bg-gray-100 rounded-lg flex items-center justify-center">Loading signature pad...</div>
+  }
+) as any; // Using 'as any' to bypass TypeScript issues with dynamic imports
 
 interface VoucherRow {
   description: string;
@@ -45,6 +39,16 @@ interface Voucher {
   };
 }
 
+// Type for the signature canvas instance
+interface SignatureCanvasInstance {
+  clear: () => void;
+  isEmpty: () => boolean;
+  toDataURL: (type?: string, encoderOptions?: number) => string;
+  fromDataURL: (dataUrl: string) => void;
+  off: () => void;
+  on: () => void;
+}
+
 export default function VoucherSignature() {
   const router = useRouter();
   const { id } = router.query;
@@ -61,8 +65,8 @@ export default function VoucherSignature() {
   const [error, setError] = useState<string | null>(null);
 
   // Fix: Use the correct type for SignatureCanvas refs
-  const salesSignRef = useRef<SignatureCanvasType | null>(null);
-  const customerSignRef = useRef<SignatureCanvasType | null>(null);
+  const salesSignRef = useRef<SignatureCanvasInstance | null>(null);
+  const customerSignRef = useRef<SignatureCanvasInstance | null>(null);
   const signatureModalRef = useRef<HTMLDivElement>(null);
 
   // Safe data access helper functions
@@ -168,7 +172,7 @@ export default function VoucherSignature() {
     }
   };
 
-  const getSignatureData = (ref: React.RefObject<SignatureCanvasType | null>): string | null => {
+  const getSignatureData = (ref: React.RefObject<SignatureCanvasInstance | null>): string | null => {
     if (!ref.current) {
       console.error("Signature ref not available");
       return null;
@@ -560,22 +564,33 @@ export default function VoucherSignature() {
             </div>
             
             <div className="border-2 border-gray-300 rounded-lg bg-white mb-4">
-              <SignatureCanvas
-                ref={(ref) => {
-                  if (activeSignature === "sales") {
+              {activeSignature === "sales" ? (
+                <SignatureCanvas
+                  ref={(ref: SignatureCanvasInstance) => {
                     salesSignRef.current = ref;
-                  } else {
+                  }}
+                  penColor="black"
+                  canvasProps={{ 
+                    width: 600, 
+                    height: 200,
+                    className: "w-full h-48 rounded-lg"
+                  }}
+                  onEnd={() => handleSignatureEnd("sales")}
+                />
+              ) : (
+                <SignatureCanvas
+                  ref={(ref: SignatureCanvasInstance) => {
                     customerSignRef.current = ref;
-                  }
-                }}
-                penColor="black"
-                canvasProps={{ 
-                  width: 600, 
-                  height: 200,
-                  className: "w-full h-48 rounded-lg"
-                }}
-                onEnd={() => handleSignatureEnd(activeSignature)}
-              />
+                  }}
+                  penColor="black"
+                  canvasProps={{ 
+                    width: 600, 
+                    height: 200,
+                    className: "w-full h-48 rounded-lg"
+                  }}
+                  onEnd={() => handleSignatureEnd("customer")}
+                />
+              )}
             </div>
             
             <div className="flex justify-between items-center">
