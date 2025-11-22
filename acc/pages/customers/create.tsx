@@ -1,4 +1,5 @@
 import { useState, ChangeEvent, FormEvent, useEffect } from "react";
+import Link from "next/link";
 
 interface CustomerForm {
   accountNo: string;
@@ -291,6 +292,9 @@ export default function CreateCustomer() {
                           <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider bg-gray-50">
                             Civil ID
                           </th>
+                          <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider bg-gray-50">
+                            Actions
+                          </th>
                         </tr>
                       </thead>
                       <tbody className="bg-white divide-y divide-gray-200">
@@ -308,10 +312,41 @@ export default function CreateCustomer() {
                             <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-500">
                               {customer.civilId}
                             </td>
+                            <td className="px-4 py-3 whitespace-nowrap text-sm">
+                              <Link 
+                                href={`/ledger/${customer.accountNo}`}
+                                className="inline-flex items-center px-3 py-1.5 bg-blue-600 text-white text-xs font-medium rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition-all duration-200 shadow-sm hover:shadow-md"
+                              >
+                                <svg className="w-3 h-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                                </svg>
+                                View Ledger
+                              </Link>
+                            </td>
                           </tr>
                         ))}
                       </tbody>
                     </table>
+                  </div>
+                  
+                  {/* Quick Stats */}
+                  <div className="mt-6 grid grid-cols-1 sm:grid-cols-3 gap-4">
+                    <div className="bg-blue-50 rounded-lg p-4 text-center">
+                      <p className="text-2xl font-bold text-blue-600">{customers.length}</p>
+                      <p className="text-sm text-blue-800">Total Customers</p>
+                    </div>
+                    <div className="bg-green-50 rounded-lg p-4 text-center">
+                      <p className="text-2xl font-bold text-green-600">
+                        {customers.length > 0 ? Math.max(...customers.map(c => parseInt(c.accountNo)) : 0}
+                      </p>
+                      <p className="text-sm text-green-800">Latest Account No</p>
+                    </div>
+                    <div className="bg-purple-50 rounded-lg p-4 text-center">
+                      <p className="text-2xl font-bold text-purple-600">
+                        {customers.length > 0 ? (parseInt(customers[customers.length - 1].accountNo) + 1).toString() : "1001"}
+                      </p>
+                      <p className="text-sm text-purple-800">Next Account No</p>
+                    </div>
                   </div>
                 </div>
               )}
