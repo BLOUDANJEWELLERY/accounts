@@ -66,21 +66,15 @@ export default function FullLedgerPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   
-  // Filters
-  const [searchTerm, setSearchTerm] = useState("");
+  // Filters - removed searchTerm, selectedCustomer, selectedType
   const [dateRange, setDateRange] = useState({
     start: "",
     end: ""
   });
-  const [selectedCustomer, setSelectedCustomer] = useState<string>("all");
-  const [selectedType, setSelectedType] = useState<string>("all");
   
   // Sorting
   const [sortField, setSortField] = useState<SortField>("date");
   const [sortDirection, setSortDirection] = useState<"asc" | "desc">("asc");
-
-  // Customers list for filter
-  const [customers, setCustomers] = useState<Customer[]>([]);
 
   // Set current month as default on component mount
   useEffect(() => {
@@ -103,11 +97,10 @@ export default function FullLedgerPage() {
           throw new Error("Failed to fetch customers");
         }
         const customersData: { customers: Customer[] } = await customersRes.json();
-        setCustomers(customersData.customers);
         console.log("Fetched customers:", customersData.customers.length);
 
         // Fetch all vouchers
-        const vouchersRes = await fetch("/api/voucher");
+        const vouchersRes = await fetch("/api/vouchers");
         if (!vouchersRes.ok) {
           throw new Error("Failed to fetch vouchers");
         }
@@ -229,19 +222,10 @@ export default function FullLedgerPage() {
     };
   };
 
-  // Apply filters and sorting
+  // Apply filters and sorting - removed search, customer, and type filters
   const filteredAndSortedEntries = ledgerEntries
     .filter((entry) => {
-      // Search term filter
-      const searchLower = searchTerm.toLowerCase();
-      const matchesSearch = 
-        entry.customer.name.toLowerCase().includes(searchLower) ||
-        entry.customer.accountNo.toLowerCase().includes(searchLower) ||
-        entry.description.toLowerCase().includes(searchLower) ||
-        entry.customer.phone.includes(searchTerm) ||
-        entry.customer.civilId.includes(searchTerm);
-
-      // Date range filter
+      // Date range filter only
       const entryDate = new Date(entry.date);
       const startDate = dateRange.start ? new Date(dateRange.start) : null;
       const endDate = dateRange.end ? new Date(dateRange.end) : null;
@@ -250,13 +234,7 @@ export default function FullLedgerPage() {
         (!startDate || entryDate >= startDate) && 
         (!endDate || entryDate <= endDate);
 
-      // Customer filter
-      const matchesCustomer = selectedCustomer === "all" || entry.customer.id === selectedCustomer;
-
-      // Type filter
-      const matchesType = selectedType === "all" || entry.type === selectedType;
-
-      return matchesSearch && matchesDateRange && matchesCustomer && matchesType;
+      return matchesDateRange;
     })
     .sort((a, b) => {
       let aValue: string | number | Date;
@@ -373,10 +351,7 @@ export default function FullLedgerPage() {
   };
 
   const clearFilters = () => {
-    setSearchTerm("");
-    setDateRange(getCurrentMonthRange()); // Reset to current month instead of clearing
-    setSelectedCustomer("all");
-    setSelectedType("all");
+    setDateRange(getCurrentMonthRange()); // Reset to current month
   };
 
   const setCurrentMonth = () => {
@@ -458,35 +433,16 @@ export default function FullLedgerPage() {
             <p className="text-2xl font-bold">{openingBalance.kwd.toFixed(3)} KWD</p>
           </div>
           <div className="bg-gradient-to-r from-green-500 to-green-600 text-white rounded-2xl p-6 text-center shadow-lg">
-            <p className="text-sm font-medium mb-2">Total Customers</p>
-            <p className="text-3xl font-bold">{customers.length}</p>
+            <p className="text-sm font-medium mb-2">Total Transactions</p>
+            <p className="text-3xl font-bold">{ledgerEntries.length}</p>
           </div>
         </div>
 
-        {/* Filters Section */}
+        {/* Filters Section - Simplified */}
         <div className="bg-white rounded-2xl shadow-xl p-6 mb-6">
           <div className="flex flex-col lg:flex-row lg:items-end gap-4 mb-4">
-            <div className="flex-1 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-              {/* Search */}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Search</label>
-                <div className="relative">
-                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                    <svg className="h-5 w-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-                    </svg>
-                  </div>
-                  <input
-                    type="text"
-                    placeholder="Search transactions..."
-                    value={searchTerm}
-                    onChange={(e) => setSearchTerm(e.target.value)}
-                    className="block w-full pl-10 pr-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
-                  />
-                </div>
-              </div>
-
-              {/* Date Range */}
+            <div className="flex-1 grid grid-cols-1 md:grid-cols-2 gap-4">
+              {/* Date Range Only */}
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">From Date</label>
                 <input
@@ -506,40 +462,10 @@ export default function FullLedgerPage() {
                   className="block w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
                 />
               </div>
-
-              {/* Customer Filter */}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Customer</label>
-                <select
-                  value={selectedCustomer}
-                  onChange={(e) => setSelectedCustomer(e.target.value)}
-                  className="block w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
-                >
-                  <option value="all">All Customers</option>
-                  {customers.map((customer) => (
-                    <option key={customer.id} value={customer.id}>
-                      {customer.name} ({customer.accountNo})
-                    </option>
-                  ))}
-                </select>
-              </div>
             </div>
 
-            {/* Type Filter and Buttons */}
+            {/* Quick Date Buttons */}
             <div className="flex flex-col sm:flex-row gap-4 lg:items-end">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Type</label>
-                <select
-                  value={selectedType}
-                  onChange={(e) => setSelectedType(e.target.value)}
-                  className="block w-full sm:w-32 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
-                >
-                  <option value="all">All Types</option>
-                  <option value="INV">Invoice</option>
-                  <option value="REC">Receipt</option>
-                </select>
-              </div>
-
               <div className="flex gap-2">
                 <button
                   onClick={setCurrentMonth}
@@ -563,19 +489,8 @@ export default function FullLedgerPage() {
             </div>
           </div>
 
-          {/* Active Filters Summary */}
+          {/* Active Filters Summary - Only show date range */}
           <div className="flex flex-wrap gap-2">
-            {searchTerm && (
-              <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
-                Search: {searchTerm}
-                <button
-                  onClick={() => setSearchTerm("")}
-                  className="ml-1 hover:text-blue-900"
-                >
-                  ×
-                </button>
-              </span>
-            )}
             {dateRange.start && (
               <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-green-100 text-green-800">
                 From: {dateRange.start}
@@ -598,28 +513,6 @@ export default function FullLedgerPage() {
                 </button>
               </span>
             )}
-            {selectedCustomer !== "all" && (
-              <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-purple-100 text-purple-800">
-                Customer: {customers.find(c => c.id === selectedCustomer)?.name}
-                <button
-                  onClick={() => setSelectedCustomer("all")}
-                  className="ml-1 hover:text-purple-900"
-                >
-                  ×
-                </button>
-              </span>
-            )}
-            {selectedType !== "all" && (
-              <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-orange-100 text-orange-800">
-                Type: {selectedType}
-                <button
-                  onClick={() => setSelectedType("all")}
-                  className="ml-1 hover:text-orange-900"
-                >
-                  ×
-                </button>
-              </span>
-            )}
           </div>
         </div>
 
@@ -631,9 +524,7 @@ export default function FullLedgerPage() {
                 Showing {filteredAndSortedEntries.length} of {ledgerEntries.length} transactions
               </h3>
               <p className="text-sm text-gray-600">
-                {searchTerm || dateRange.start || dateRange.end || selectedCustomer !== "all" || selectedType !== "all" 
-                  ? "Filtered results" 
-                  : "All transactions"}
+                {dateRange.start || dateRange.end ? "Filtered by date range" : "All transactions"}
               </p>
             </div>
             <div className="flex gap-4 mt-4 sm:mt-0">
@@ -745,8 +636,8 @@ export default function FullLedgerPage() {
                       </svg>
                       <h3 className="text-lg font-medium text-gray-900 mb-2">No transactions found</h3>
                       <p className="text-gray-500">
-                        {searchTerm || dateRange.start || dateRange.end || selectedCustomer !== "all" || selectedType !== "all" 
-                          ? "Try adjusting your filters" 
+                        {dateRange.start || dateRange.end 
+                          ? "Try adjusting your date range" 
                           : "No transactions in the system"}
                       </p>
                     </td>
