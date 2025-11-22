@@ -1,46 +1,6 @@
 // pages/voucher/signature/[id].tsx
 import { useState, useRef, useEffect } from "react";
 import { useRouter } from "next/router";
-import dynamic from 'next/dynamic';
-
-// Define the signature canvas instance type
-interface SignatureCanvasInstance {
-  clear: () => void;
-  isEmpty: () => boolean;
-  toDataURL: (type?: string, encoderOptions?: number) => string;
-  fromDataURL: (dataUrl: string) => void;
-  off: () => void;
-  on: () => void;
-}
-
-// Define the signature canvas component props
-interface SignatureCanvasProps {
-  ref?: React.Ref<SignatureCanvasInstance>;
-  penColor?: string;
-  canvasProps?: {
-    width?: number;
-    height?: number;
-    className?: string;
-    style?: React.CSSProperties;
-  };
-  onEnd?: () => void;
-  clearOnResize?: boolean;
-  backgroundColor?: string;
-  throttle?: number;
-  minWidth?: number;
-  maxWidth?: number;
-  minDistance?: number;
-  dotSize?: number | (() => number);
-}
-
-// Dynamically import SignatureCanvas to avoid SSR issues
-const SignatureCanvas = dynamic<SignatureCanvasProps>(
-  () => import('react-signature-canvas').then((mod) => mod.default),
-  {
-    ssr: false,
-    loading: () => <div className="w-full h-48 bg-gray-100 rounded-lg flex items-center justify-center">Loading signature pad...</div>
-  }
-);
 
 interface VoucherRow {
   description: string;
@@ -69,6 +29,128 @@ interface Voucher {
   };
 }
 
+// Simple signature component to avoid complex typing issues
+function SignaturePad({ 
+  onSave, 
+  onClear 
+}: { 
+  onSave: (dataUrl: string) => void;
+  onClear: () => void;
+}) {
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const [isDrawing, setIsDrawing] = useState(false);
+  const [hasSignature, setHasSignature] = useState(false);
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    // Set up canvas
+    ctx.strokeStyle = '#000000';
+    ctx.lineWidth = 2;
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+
+    const handleMouseDown = (e: MouseEvent) => {
+      setIsDrawing(true);
+      const rect = canvas.getBoundingClientRect();
+      ctx.beginPath();
+      ctx.moveTo(e.clientX - rect.left, e.clientY - rect.top);
+    };
+
+    const handleMouseMove = (e: MouseEvent) => {
+      if (!isDrawing) return;
+      const rect = canvas.getBoundingClientRect();
+      ctx.lineTo(e.clientX - rect.left, e.clientY - rect.top);
+      ctx.stroke();
+    };
+
+    const handleMouseUp = () => {
+      setIsDrawing(false);
+      setHasSignature(true);
+      onSave(canvas.toDataURL());
+    };
+
+    // Touch events for mobile
+    const handleTouchStart = (e: TouchEvent) => {
+      e.preventDefault();
+      setIsDrawing(true);
+      const rect = canvas.getBoundingClientRect();
+      const touch = e.touches[0];
+      ctx.beginPath();
+      ctx.moveTo(touch.clientX - rect.left, touch.clientY - rect.top);
+    };
+
+    const handleTouchMove = (e: TouchEvent) => {
+      e.preventDefault();
+      if (!isDrawing) return;
+      const rect = canvas.getBoundingClientRect();
+      const touch = e.touches[0];
+      ctx.lineTo(touch.clientX - rect.left, touch.clientY - rect.top);
+      ctx.stroke();
+    };
+
+    const handleTouchEnd = () => {
+      setIsDrawing(false);
+      setHasSignature(true);
+      onSave(canvas.toDataURL());
+    };
+
+    // Add event listeners
+    canvas.addEventListener('mousedown', handleMouseDown);
+    canvas.addEventListener('mousemove', handleMouseMove);
+    canvas.addEventListener('mouseup', handleMouseUp);
+    canvas.addEventListener('touchstart', handleTouchStart);
+    canvas.addEventListener('touchmove', handleTouchMove);
+    canvas.addEventListener('touchend', handleTouchEnd);
+
+    return () => {
+      // Cleanup
+      canvas.removeEventListener('mousedown', handleMouseDown);
+      canvas.removeEventListener('mousemove', handleMouseMove);
+      canvas.removeEventListener('mouseup', handleMouseUp);
+      canvas.removeEventListener('touchstart', handleTouchStart);
+      canvas.removeEventListener('touchmove', handleTouchMove);
+      canvas.removeEventListener('touchend', handleTouchEnd);
+    };
+  }, [isDrawing, onSave]);
+
+  const handleClear = () => {
+    const canvas = canvasRef.current;
+    const ctx = canvas?.getContext('2d');
+    if (ctx && canvas) {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      setHasSignature(false);
+      onClear();
+    }
+  };
+
+  return (
+    <div className="border-2 border-gray-300 rounded-lg bg-white">
+      <canvas
+        ref={canvasRef}
+        width={600}
+        height={200}
+        className="w-full h-48 rounded-lg cursor-crosshair touch-none"
+      />
+      <div className="p-2 bg-gray-50 border-t border-gray-300">
+        <button
+          onClick={handleClear}
+          className="bg-red-600 text-white px-4 py-2 rounded text-sm hover:bg-red-700 transition-colors"
+        >
+          Clear Signature
+        </button>
+        {hasSignature && (
+          <span className="ml-2 text-green-600 text-sm">✓ Signed</span>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export default function VoucherSignature() {
   const router = useRouter();
   const { id } = router.query;
@@ -84,9 +166,9 @@ export default function VoucherSignature() {
   const [activeSignature, setActiveSignature] = useState<"sales" | "customer" | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  // Use proper typing for refs
-  const salesSignRef = useRef<SignatureCanvasInstance | null>(null);
-  const customerSignRef = useRef<SignatureCanvasInstance | null>(null);
+  const [salesSignature, setSalesSignature] = useState<string | null>(null);
+  const [customerSignature, setCustomerSignature] = useState<string | null>(null);
+
   const signatureModalRef = useRef<HTMLDivElement>(null);
 
   // Safe data access helper functions
@@ -174,40 +256,24 @@ export default function VoucherSignature() {
     };
   }, [pdfBlobUrl]);
 
-  const handleClear = (who: "sales" | "customer") => {
-    if (who === "sales") {
-      salesSignRef.current?.clear();
-      setHasSalesSigned(false);
-    } else {
-      customerSignRef.current?.clear();
-      setHasCustomerSigned(false);
-    }
+  const handleSalesSignature = (dataUrl: string) => {
+    setSalesSignature(dataUrl);
+    setHasSalesSigned(true);
   };
 
-  const handleSignatureEnd = (who: "sales" | "customer") => {
-    if (who === "sales") {
-      setHasSalesSigned(true);
-    } else {
-      setHasCustomerSigned(true);
-    }
+  const handleCustomerSignature = (dataUrl: string) => {
+    setCustomerSignature(dataUrl);
+    setHasCustomerSigned(true);
   };
 
-  const getSignatureData = (ref: React.RefObject<SignatureCanvasInstance | null>): string | null => {
-    if (!ref.current) {
-      console.error("Signature ref not available");
-      return null;
-    }
-    
-    try {
-      if (ref.current.isEmpty()) {
-        return null;
-      }
-      
-      return ref.current.toDataURL("image/png");
-    } catch (err) {
-      console.error("Error extracting signature:", err);
-      return null;
-    }
+  const handleClearSales = () => {
+    setSalesSignature(null);
+    setHasSalesSigned(false);
+  };
+
+  const handleClearCustomer = () => {
+    setCustomerSignature(null);
+    setHasCustomerSigned(false);
   };
 
   const handleSubmit = async () => {
@@ -216,10 +282,7 @@ export default function VoucherSignature() {
       return;
     }
 
-    const salesSign = getSignatureData(salesSignRef);
-    const customerSign = getSignatureData(customerSignRef);
-
-    if (!salesSign || !customerSign) {
+    if (!salesSignature || !customerSignature) {
       alert("Failed to capture signature data. Please try signing again.");
       return;
     }
@@ -235,8 +298,8 @@ export default function VoucherSignature() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           voucherId: id,
-          salesSign,
-          customerSign,
+          salesSign: salesSignature,
+          customerSign: customerSignature,
         }),
       });
 
@@ -481,7 +544,11 @@ export default function VoucherSignature() {
                 >
                   {hasSalesSigned ? (
                     <div className="h-24 flex items-center justify-center">
-                      <p className="text-green-600 font-semibold">✓ Signature Provided</p>
+                      <img 
+                        src={salesSignature!} 
+                        alt="Sales signature" 
+                        className="max-h-20 max-w-full object-contain"
+                      />
                     </div>
                   ) : (
                     <div className="h-24 flex items-center justify-center">
@@ -490,7 +557,7 @@ export default function VoucherSignature() {
                   )}
                 </div>
                 <button
-                  onClick={() => handleClear("sales")}
+                  onClick={handleClearSales}
                   className="mt-2 text-red-600 hover:text-red-800 text-sm font-medium"
                 >
                   Clear Signature
@@ -506,7 +573,11 @@ export default function VoucherSignature() {
                 >
                   {hasCustomerSigned ? (
                     <div className="h-24 flex items-center justify-center">
-                      <p className="text-green-600 font-semibold">✓ Signature Provided</p>
+                      <img 
+                        src={customerSignature!} 
+                        alt="Customer signature" 
+                        className="max-h-20 max-w-full object-contain"
+                      />
                     </div>
                   ) : (
                     <div className="h-24 flex items-center justify-center">
@@ -515,7 +586,7 @@ export default function VoucherSignature() {
                   )}
                 </div>
                 <button
-                  onClick={() => handleClear("customer")}
+                  onClick={handleClearCustomer}
                   className="mt-2 text-red-600 hover:text-red-800 text-sm font-medium"
                 >
                   Clear Signature
@@ -583,45 +654,27 @@ export default function VoucherSignature() {
               </button>
             </div>
             
-            <div className="border-2 border-gray-300 rounded-lg bg-white mb-4">
-              {activeSignature === "sales" ? (
-                <SignatureCanvas
-                  ref={(ref: SignatureCanvasInstance | null) => {
-                    salesSignRef.current = ref;
-                  }}
-                  penColor="black"
-                  canvasProps={{ 
-                    width: 600, 
-                    height: 200,
-                    className: "w-full h-48 rounded-lg"
-                  }}
-                  onEnd={() => handleSignatureEnd("sales")}
-                />
-              ) : (
-                <SignatureCanvas
-                  ref={(ref: SignatureCanvasInstance | null) => {
-                    customerSignRef.current = ref;
-                  }}
-                  penColor="black"
-                  canvasProps={{ 
-                    width: 600, 
-                    height: 200,
-                    className: "w-full h-48 rounded-lg"
-                  }}
-                  onEnd={() => handleSignatureEnd("customer")}
-                />
-              )}
-            </div>
+            <SignaturePad
+              onSave={(dataUrl) => {
+                if (activeSignature === "sales") {
+                  handleSalesSignature(dataUrl);
+                } else {
+                  handleCustomerSignature(dataUrl);
+                }
+                setActiveSignature(null);
+              }}
+              onClear={() => {
+                if (activeSignature === "sales") {
+                  handleClearSales();
+                } else {
+                  handleClearCustomer();
+                }
+              }}
+            />
             
-            <div className="flex justify-between items-center">
-              <button
-                onClick={() => handleClear(activeSignature)}
-                className="bg-red-600 text-white px-6 py-2 rounded-lg hover:bg-red-700 transition-colors duration-200"
-              >
-                Clear Signature
-              </button>
+            <div className="mt-4 text-center">
               <p className="text-gray-600 text-sm">
-                Click anywhere outside this box to save signature
+                Draw your signature above, then click outside this box to save
               </p>
             </div>
           </div>
