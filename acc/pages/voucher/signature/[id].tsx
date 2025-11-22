@@ -8,6 +8,16 @@ const SignatureCanvas = dynamic(() => import('react-signature-canvas'), {
   ssr: false,
 });
 
+// Define the type for SignatureCanvas ref
+type SignatureCanvasType = {
+  clear: () => void;
+  isEmpty: () => boolean;
+  toDataURL: (type?: string, encoderOptions?: number) => string;
+  fromDataURL: (dataUrl: string) => void;
+  off: () => void;
+  on: () => void;
+};
+
 interface VoucherRow {
   description: string;
   weight: number;
@@ -50,8 +60,9 @@ export default function VoucherSignature() {
   const [activeSignature, setActiveSignature] = useState<"sales" | "customer" | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  const salesSignRef = useRef<SignatureCanvas | null>(null);
-  const customerSignRef = useRef<SignatureCanvas | null>(null);
+  // Fix: Use the correct type for SignatureCanvas refs
+  const salesSignRef = useRef<SignatureCanvasType | null>(null);
+  const customerSignRef = useRef<SignatureCanvasType | null>(null);
   const signatureModalRef = useRef<HTMLDivElement>(null);
 
   // Safe data access helper functions
@@ -157,7 +168,7 @@ export default function VoucherSignature() {
     }
   };
 
-  const getSignatureData = (ref: React.RefObject<SignatureCanvas | null>): string | null => {
+  const getSignatureData = (ref: React.RefObject<SignatureCanvasType | null>): string | null => {
     if (!ref.current) {
       console.error("Signature ref not available");
       return null;
@@ -550,7 +561,13 @@ export default function VoucherSignature() {
             
             <div className="border-2 border-gray-300 rounded-lg bg-white mb-4">
               <SignatureCanvas
-                ref={activeSignature === "sales" ? salesSignRef : customerSignRef}
+                ref={(ref) => {
+                  if (activeSignature === "sales") {
+                    salesSignRef.current = ref;
+                  } else {
+                    customerSignRef.current = ref;
+                  }
+                }}
                 penColor="black"
                 canvasProps={{ 
                   width: 600, 
