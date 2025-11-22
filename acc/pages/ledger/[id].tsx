@@ -33,6 +33,8 @@ interface LedgerEntry {
   kwdCredit: number;
   kwdBalance: number;
   pdfUrl?: string;
+  isOpeningBalance?: boolean;
+  isClosingBalance?: boolean;
 }
 
 interface VoucherRow {
@@ -41,17 +43,40 @@ interface VoucherRow {
   item?: string;
 }
 
+// Helper function to get current month date range
+const getCurrentMonthRange = () => {
+  const now = new Date();
+  const firstDay = new Date(now.getFullYear(), now.getMonth(), 1);
+  const lastDay = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+  
+  return {
+    start: firstDay.toISOString().split('T')[0],
+    end: lastDay.toISOString().split('T')[0]
+  };
+};
+
 export default function LedgerPage() {
   const router = useRouter();
   const { id } = router.query;
 
   const [customer, setCustomer] = useState<Customer | null>(null);
   const [vouchers, setVouchers] = useState<Voucher[]>([]);
-  const [ledgerEntries, setLedgerEntries] = useState<LedgerEntry[]>([]);
+  const [allLedgerEntries, setAllLedgerEntries] = useState<LedgerEntry[]>([]);
+  const [filteredLedgerEntries, setFilteredLedgerEntries] = useState<LedgerEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [currentGoldBalance, setCurrentGoldBalance] = useState(0);
-  const [currentKWDBalance, setCurrentKWDBalance] = useState(0);
+  
+  // Date range state
+  const [dateRange, setDateRange] = useState({
+    start: "",
+    end: ""
+  });
+
+  // Set current month as default on component mount
+  useEffect(() => {
+    const currentMonth = getCurrentMonthRange();
+    setDateRange(currentMonth);
+  }, []);
 
   // Fetch customer and vouchers data
   useEffect(() => {
@@ -129,9 +154,8 @@ export default function LedgerPage() {
           }
         });
 
-        setLedgerEntries(entries);
-        setCurrentGoldBalance(runningGoldBalance);
-        setCurrentKWDBalance(runningKWDBalance);
+        setAllLedgerEntries(entries);
+        setFilteredLedgerEntries(entries);
       } catch (err) {
         console.error("Error fetching ledger data:", err);
         setError(err instanceof Error ? err.message : "Failed to load ledger data");
@@ -143,11 +167,129 @@ export default function LedgerPage() {
     fetchData();
   }, [id]);
 
-  // Calculate totals
-  const totalGoldDebit = ledgerEntries.reduce((sum, entry) => sum + entry.goldDebit, 0);
-  const totalGoldCredit = ledgerEntries.reduce((sum, entry) => sum + entry.goldCredit, 0);
-  const totalKWDDebit = ledgerEntries.reduce((sum, entry) => sum + entry.kwdDebit, 0);
-  const totalKWDCredit = ledgerEntries.reduce((sum, entry) => sum + entry.kwdCredit, 0);
+  // Filter entries by date range
+  useEffect(() => {
+    if (allLedgerEntries.length === 0) return;
+
+    const filtered = allLedgerEntries.filter((entry) => {
+      const entryDate = new Date(entry.date);
+      const startDate = dateRange.start ? new Date(dateRange.start) : null;
+      const endDate = dateRange.end ? new Date(dateRange.end) : null;
+      
+      const matchesDateRange = 
+        (!startDate || entryDate >= startDate) && 
+        (!endDate || entryDate <= endDate);
+
+      return matchesDateRange;
+    });
+
+    setFilteredLedgerEntries(filtered);
+  }, [dateRange, allLedgerEntries]);
+
+  // Calculate opening balance (balance before the date range)
+  const calculateOpeningBalance = () => {
+    if (!dateRange.start || allLedgerEntries.length === 0) {
+      return { gold: 0, kwd: 0 };
+    }
+
+    const startDate = new Date(dateRange.start);
+    let openingGoldBalance = 0;
+    let openingKWDBalance = 0;
+
+    // Find the last entry before the start date
+    for (let i = allLedgerEntries.length - 1; i >= 0; i--) {
+      const entryDate = new Date(allLedgerEntries[i].date);
+      if (entryDate < startDate) {
+        openingGoldBalance = allLedgerEntries[i].goldBalance;
+        openingKWDBalance = allLedgerEntries[i].kwdBalance;
+        break;
+      }
+    }
+
+    return { gold: openingGoldBalance, kwd: openingKWDBalance };
+  };
+
+  // Calculate closing balance (balance at the end of date range)
+  const calculateClosingBalance = () => {
+    if (filteredLedgerEntries.length === 0) {
+      return calculateOpeningBalance();
+    }
+
+    const lastEntry = filteredLedgerEntries[filteredLedgerEntries.length - 1];
+    return { 
+      gold: lastEntry.goldBalance, 
+      kwd: lastEntry.kwdBalance 
+    };
+  };
+
+  // Add opening and closing balance rows
+  const openingBalance = calculateOpeningBalance();
+  const closingBalance = calculateClosingBalance();
+  
+  const entriesWithBalances: LedgerEntry[] = [
+    // Opening balance row
+    {
+      date: dateRange.start || "Beginning",
+      voucherId: "opening-balance",
+      type: "INV",
+      description: "Balance brought forward",
+      goldDebit: 0,
+      goldCredit: 0,
+      goldBalance: openingBalance.gold,
+      kwdDebit: 0,
+      kwdCredit: 0,
+      kwdBalance: openingBalance.kwd,
+      isOpeningBalance: true,
+    },
+    ...filteredLedgerEntries,
+    // Closing balance row
+    {
+      date: dateRange.end || "Current",
+      voucherId: "closing-balance",
+      type: "INV",
+      description: "Balance carried forward",
+      goldDebit: 0,
+      goldCredit: 0,
+      goldBalance: closingBalance.gold,
+      kwdDebit: 0,
+      kwdCredit: 0,
+      kwdBalance: closingBalance.kwd,
+      isClosingBalance: true,
+    }
+  ];
+
+  // Calculate totals for filtered results only (excluding opening/closing rows)
+  const totalGoldDebit = filteredLedgerEntries.reduce((sum, entry) => sum + entry.goldDebit, 0);
+  const totalGoldCredit = filteredLedgerEntries.reduce((sum, entry) => sum + entry.goldCredit, 0);
+  const totalKWDDebit = filteredLedgerEntries.reduce((sum, entry) => sum + entry.kwdDebit, 0);
+  const totalKWDCredit = filteredLedgerEntries.reduce((sum, entry) => sum + entry.kwdCredit, 0);
+
+  // Get current overall balances
+  const currentGoldBalance = allLedgerEntries.length > 0 
+    ? allLedgerEntries[allLedgerEntries.length - 1].goldBalance 
+    : 0;
+  const currentKWDBalance = allLedgerEntries.length > 0 
+    ? allLedgerEntries[allLedgerEntries.length - 1].kwdBalance 
+    : 0;
+
+  const clearFilters = () => {
+    setDateRange(getCurrentMonthRange());
+  };
+
+  const setCurrentMonth = () => {
+    setDateRange(getCurrentMonthRange());
+  };
+
+  const setLastMonth = () => {
+    const now = new Date();
+    const firstDayLastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+    const lastDayLastMonth = new Date(now.getFullYear(), now.getMonth(), 0);
+    
+    setDateRange({
+      start: firstDayLastMonth.toISOString().split('T')[0],
+      end: lastDayLastMonth.toISOString().split('T')[0]
+    });
+  };
 
   if (loading) {
     return (
@@ -236,23 +378,81 @@ export default function LedgerPage() {
           </div>
         </div>
 
-        {/* Balance Summary - Updated for Gold and KWD */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-          <div className="bg-gradient-to-r from-yellow-500 to-yellow-600 text-white rounded-2xl p-6 text-center shadow-lg">
-            <p className="text-sm font-medium mb-2">Total Gold Debit</p>
-            <p className="text-2xl font-bold">{totalGoldDebit.toFixed(3)} g</p>
+        {/* Date Range Filters */}
+        <div className="bg-white rounded-2xl shadow-xl p-6 mb-6">
+          <div className="flex flex-col lg:flex-row lg:items-end gap-4 mb-4">
+            <div className="flex-1 grid grid-cols-1 md:grid-cols-2 gap-4">
+              {/* Date Range */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">From Date</label>
+                <input
+                  type="date"
+                  value={dateRange.start}
+                  onChange={(e) => setDateRange(prev => ({ ...prev, start: e.target.value }))}
+                  className="block w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">To Date</label>
+                <input
+                  type="date"
+                  value={dateRange.end}
+                  onChange={(e) => setDateRange(prev => ({ ...prev, end: e.target.value }))}
+                  className="block w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                />
+              </div>
+            </div>
+
+            {/* Quick Date Buttons */}
+            <div className="flex flex-col sm:flex-row gap-4 lg:items-end">
+              <div className="flex gap-2">
+                <button
+                  onClick={setCurrentMonth}
+                  className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+                >
+                  Current Month
+                </button>
+                <button
+                  onClick={setLastMonth}
+                  className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors"
+                >
+                  Last Month
+                </button>
+                <button
+                  onClick={clearFilters}
+                  className="px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition-colors"
+                >
+                  Clear Filters
+                </button>
+              </div>
+            </div>
           </div>
-          <div className="bg-gradient-to-r from-yellow-400 to-yellow-500 text-white rounded-2xl p-6 text-center shadow-lg">
-            <p className="text-sm font-medium mb-2">Total Gold Credit</p>
-            <p className="text-2xl font-bold">{totalGoldCredit.toFixed(3)} g</p>
-          </div>
-          <div className="bg-gradient-to-r from-blue-500 to-blue-600 text-white rounded-2xl p-6 text-center shadow-lg">
-            <p className="text-sm font-medium mb-2">Total KWD Debit</p>
-            <p className="text-2xl font-bold">{totalKWDDebit.toFixed(3)} KWD</p>
-          </div>
-          <div className="bg-gradient-to-r from-green-500 to-green-600 text-white rounded-2xl p-6 text-center shadow-lg">
-            <p className="text-sm font-medium mb-2">Total KWD Credit</p>
-            <p className="text-2xl font-bold">{totalKWDCredit.toFixed(3)} KWD</p>
+
+          {/* Active Filters Summary */}
+          <div className="flex flex-wrap gap-2">
+            {dateRange.start && (
+              <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                From: {dateRange.start}
+                <button
+                  onClick={() => setDateRange(prev => ({ ...prev, start: "" }))}
+                  className="ml-1 hover:text-green-900"
+                >
+                  ×
+                </button>
+              </span>
+            )}
+            {dateRange.end && (
+              <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                To: {dateRange.end}
+                <button
+                  onClick={() => setDateRange(prev => ({ ...prev, end: "" }))}
+                  className="ml-1 hover:text-green-900"
+                >
+                  ×
+                </button>
+              </span>
+            )}
           </div>
         </div>
 
@@ -282,18 +482,46 @@ export default function LedgerPage() {
           </div>
         </div>
 
-        {/* Ledger Table - Updated for Gold and KWD */}
+        {/* Results Summary */}
+        <div className="bg-white rounded-2xl shadow-xl p-6 mb-6">
+          <div className="flex flex-col sm:flex-row justify-between items-center">
+            <div>
+              <h3 className="text-lg font-semibold text-gray-900">
+                Showing {filteredLedgerEntries.length} of {allLedgerEntries.length} transactions
+              </h3>
+              <p className="text-sm text-gray-600">
+                {dateRange.start || dateRange.end ? "Filtered by date range" : "All transactions"}
+              </p>
+            </div>
+            <div className="flex gap-4 mt-4 sm:mt-0">
+              <div className="text-center">
+                <p className="text-sm text-gray-600">Period Gold Change</p>
+                <p className={`text-lg font-semibold ${(closingBalance.gold - openingBalance.gold) >= 0 ? 'text-purple-600' : 'text-red-600'}`}>
+                  {(closingBalance.gold - openingBalance.gold).toFixed(3)} g
+                </p>
+              </div>
+              <div className="text-center">
+                <p className="text-sm text-gray-600">Period KWD Change</p>
+                <p className={`text-lg font-semibold ${(closingBalance.kwd - openingBalance.kwd) >= 0 ? 'text-blue-600' : 'text-orange-600'}`}>
+                  {(closingBalance.kwd - openingBalance.kwd).toFixed(3)} KWD
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Ledger Table with Opening/Closing Balances */}
         <div className="bg-white rounded-2xl shadow-xl overflow-hidden">
           <div className="px-6 py-4 border-b border-gray-200">
             <div className="flex items-center justify-between">
               <h2 className="text-xl font-bold text-gray-900">Transaction History</h2>
               <span className="text-sm text-gray-500">
-                {ledgerEntries.length} transaction(s)
+                {filteredLedgerEntries.length} transaction(s)
               </span>
             </div>
           </div>
 
-          {ledgerEntries.length === 0 ? (
+          {entriesWithBalances.length === 0 ? (
             <div className="text-center py-12">
               <svg className="w-16 h-16 text-gray-300 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
@@ -339,19 +567,31 @@ export default function LedgerPage() {
                   </tr>
                 </thead>
                 <tbody className="bg-white divide-y divide-gray-200">
-                  {ledgerEntries.map((entry) => (
-                    <tr key={entry.voucherId} className="hover:bg-gray-50 transition-colors duration-150">
+                  {entriesWithBalances.map((entry) => (
+                    <tr 
+                      key={entry.voucherId} 
+                      className={`hover:bg-gray-50 transition-colors duration-150 ${
+                        entry.isOpeningBalance ? 'bg-blue-50' : 
+                        entry.isClosingBalance ? 'bg-green-50' : ''
+                      }`}
+                    >
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                         {entry.date}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
-                        <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                          entry.type === "INV" 
-                            ? "bg-blue-100 text-blue-800"
-                            : "bg-green-100 text-green-800"
-                        }`}>
-                          {entry.type}
-                        </span>
+                        {!entry.isOpeningBalance && !entry.isClosingBalance ? (
+                          <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                            entry.type === "INV" 
+                              ? "bg-blue-100 text-blue-800"
+                              : "bg-green-100 text-green-800"
+                          }`}>
+                            {entry.type}
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-800">
+                            BAL
+                          </span>
+                        )}
                       </td>
                       <td className="px-6 py-4 text-sm text-gray-900 max-w-xs truncate">
                         {entry.description}
@@ -381,7 +621,7 @@ export default function LedgerPage() {
                         {entry.kwdBalance.toFixed(3)}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                        {entry.pdfUrl && (
+                        {entry.pdfUrl && !entry.isOpeningBalance && !entry.isClosingBalance && (
                           <a
                             href={entry.pdfUrl}
                             target="_blank"
@@ -401,7 +641,7 @@ export default function LedgerPage() {
                 <tfoot className="bg-gray-50">
                   <tr>
                     <td colSpan={3} className="px-6 py-4 text-sm font-medium text-gray-900 text-right">
-                      Totals:
+                      Filtered Period Totals:
                     </td>
                     {/* Gold Totals */}
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-right text-gray-900 font-mono font-bold">
@@ -411,9 +651,9 @@ export default function LedgerPage() {
                       {totalGoldCredit.toFixed(3)}
                     </td>
                     <td className={`px-6 py-4 whitespace-nowrap text-sm text-right font-mono font-bold ${
-                      currentGoldBalance >= 0 ? "text-purple-600" : "text-red-600"
+                      closingBalance.gold >= 0 ? "text-purple-600" : "text-red-600"
                     }`}>
-                      {currentGoldBalance.toFixed(3)}
+                      {closingBalance.gold.toFixed(3)}
                     </td>
                     {/* KWD Totals */}
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-right text-gray-900 font-mono font-bold">
@@ -423,9 +663,9 @@ export default function LedgerPage() {
                       {totalKWDCredit.toFixed(3)}
                     </td>
                     <td className={`px-6 py-4 whitespace-nowrap text-sm text-right font-mono font-bold ${
-                      currentKWDBalance >= 0 ? "text-indigo-600" : "text-orange-600"
+                      closingBalance.kwd >= 0 ? "text-indigo-600" : "text-orange-600"
                     }`}>
-                      {currentKWDBalance.toFixed(3)}
+                      {closingBalance.kwd.toFixed(3)}
                     </td>
                     <td></td>
                   </tr>
