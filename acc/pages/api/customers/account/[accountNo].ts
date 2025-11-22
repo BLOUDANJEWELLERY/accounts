@@ -1,5 +1,5 @@
 import type { NextApiRequest, NextApiResponse } from "next";
-import { prisma } from "@/lib/prisma"; // adjust path to your prisma instance
+import { prisma } from "../../../../server/prisma";
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   const { accountNo } = req.query;
