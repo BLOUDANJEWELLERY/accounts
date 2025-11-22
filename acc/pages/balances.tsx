@@ -60,7 +60,7 @@ export default function BalancesPage() {
         const balancesPromises = customersData.customers.map(async (customer) => {
           try {
             console.log(`Fetching vouchers for customer: ${customer.name} (${customer.id})`);
-            const vouchersRes = await fetch(`/api/vouchers/customer/${customer.id}`);
+            const vouchersRes = await fetch(`/api/voucher/customer/${customer.id}`);
             
             if (!vouchersRes.ok) {
               console.warn(`No vouchers found for customer ${customer.name}, status: ${vouchersRes.status}`);
