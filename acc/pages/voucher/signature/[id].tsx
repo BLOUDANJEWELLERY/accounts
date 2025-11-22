@@ -3,14 +3,44 @@ import { useState, useRef, useEffect } from "react";
 import { useRouter } from "next/router";
 import dynamic from 'next/dynamic';
 
-// Dynamically import SignatureCanvas to avoid SSR issues with proper typing
-const SignatureCanvas = dynamic(
+// Define the signature canvas instance type
+interface SignatureCanvasInstance {
+  clear: () => void;
+  isEmpty: () => boolean;
+  toDataURL: (type?: string, encoderOptions?: number) => string;
+  fromDataURL: (dataUrl: string) => void;
+  off: () => void;
+  on: () => void;
+}
+
+// Define the signature canvas component props
+interface SignatureCanvasProps {
+  ref?: React.Ref<SignatureCanvasInstance>;
+  penColor?: string;
+  canvasProps?: {
+    width?: number;
+    height?: number;
+    className?: string;
+    style?: React.CSSProperties;
+  };
+  onEnd?: () => void;
+  clearOnResize?: boolean;
+  backgroundColor?: string;
+  throttle?: number;
+  minWidth?: number;
+  maxWidth?: number;
+  minDistance?: number;
+  dotSize?: number | (() => number);
+}
+
+// Dynamically import SignatureCanvas to avoid SSR issues
+const SignatureCanvas = dynamic<SignatureCanvasProps>(
   () => import('react-signature-canvas').then((mod) => mod.default),
   {
     ssr: false,
     loading: () => <div className="w-full h-48 bg-gray-100 rounded-lg flex items-center justify-center">Loading signature pad...</div>
   }
-) as any; // Using 'as any' to bypass TypeScript issues with dynamic imports
+);
 
 interface VoucherRow {
   description: string;
@@ -39,16 +69,6 @@ interface Voucher {
   };
 }
 
-// Type for the signature canvas instance
-interface SignatureCanvasInstance {
-  clear: () => void;
-  isEmpty: () => boolean;
-  toDataURL: (type?: string, encoderOptions?: number) => string;
-  fromDataURL: (dataUrl: string) => void;
-  off: () => void;
-  on: () => void;
-}
-
 export default function VoucherSignature() {
   const router = useRouter();
   const { id } = router.query;
@@ -64,7 +84,7 @@ export default function VoucherSignature() {
   const [activeSignature, setActiveSignature] = useState<"sales" | "customer" | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  // Fix: Use the correct type for SignatureCanvas refs
+  // Use proper typing for refs
   const salesSignRef = useRef<SignatureCanvasInstance | null>(null);
   const customerSignRef = useRef<SignatureCanvasInstance | null>(null);
   const signatureModalRef = useRef<HTMLDivElement>(null);
@@ -566,7 +586,7 @@ export default function VoucherSignature() {
             <div className="border-2 border-gray-300 rounded-lg bg-white mb-4">
               {activeSignature === "sales" ? (
                 <SignatureCanvas
-                  ref={(ref: SignatureCanvasInstance) => {
+                  ref={(ref: SignatureCanvasInstance | null) => {
                     salesSignRef.current = ref;
                   }}
                   penColor="black"
@@ -579,7 +599,7 @@ export default function VoucherSignature() {
                 />
               ) : (
                 <SignatureCanvas
-                  ref={(ref: SignatureCanvasInstance) => {
+                  ref={(ref: SignatureCanvasInstance | null) => {
                     customerSignRef.current = ref;
                   }}
                   penColor="black"
