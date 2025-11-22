@@ -201,12 +201,14 @@ export default function VoucherSignature() {
         }
 
         // Validate required fields
-        const requiredFields = ['id', 'accountId', 'voucherType', 'rows', 'totalNet', 'totalKWD', 'date'];
-        const missingFields = requiredFields.filter(field => !data.voucher[field]);
-        
-        if (missingFields.length > 0) {
-          throw new Error(`Missing required fields: ${missingFields.join(', ')}`);
-        }
+       // Validate required fields
+const requiredFields = ['id', 'accountId', 'voucherType', 'rows', 'totalNet', 'totalKWD', 'date'];
+const missingFields = requiredFields.filter(field => data.voucher[field] === null || data.voucher[field] === undefined);
+
+if (missingFields.length > 0) {
+  throw new Error(`Missing required fields: ${missingFields.join(', ')}`);
+}
+
 
         // Ensure customer object exists with fallbacks
         if (!data.voucher.customer) {
