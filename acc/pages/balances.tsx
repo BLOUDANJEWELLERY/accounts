@@ -28,13 +28,16 @@ interface CustomerBalance {
   voucherCount: number;
 }
 
+// Type for sortable fields
+type SortableField = 'customer' | 'goldBalance' | 'kwdBalance' | 'lastTransactionDate' | 'voucherCount';
+
 export default function BalancesPage() {
   const router = useRouter();
   const [customerBalances, setCustomerBalances] = useState<CustomerBalance[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState("");
-  const [sortField, setSortField] = useState<keyof CustomerBalance>("customer");
+  const [sortField, setSortField] = useState<SortableField>("customer");
   const [sortDirection, setSortDirection] = useState<"asc" | "desc">("desc");
 
   // Fetch all customers and their balances
@@ -126,10 +129,10 @@ export default function BalancesPage() {
       );
     })
     .sort((a, b) => {
-      let aValue: any = a;
-      let bValue: any = b;
+      let aValue: string | number | null;
+      let bValue: string | number | null;
 
-      // Handle nested customer fields
+      // Handle nested customer fields and different field types
       if (sortField === "customer") {
         aValue = a.customer.name;
         bValue = b.customer.name;
@@ -137,6 +140,10 @@ export default function BalancesPage() {
         aValue = a[sortField];
         bValue = b[sortField];
       }
+
+      // Handle null values
+      if (aValue === null) aValue = "";
+      if (bValue === null) bValue = "";
 
       if (sortDirection === "asc") {
         return aValue > bValue ? 1 : -1;
@@ -152,7 +159,7 @@ export default function BalancesPage() {
   const customersWithDebt = customerBalances.filter(balance => balance.goldBalance > 0 || balance.kwdBalance > 0).length;
   const customersWithCredit = customerBalances.filter(balance => balance.goldBalance < 0 || balance.kwdBalance < 0).length;
 
-  const handleSort = (field: keyof CustomerBalance) => {
+  const handleSort = (field: SortableField) => {
     if (sortField === field) {
       setSortDirection(sortDirection === "asc" ? "desc" : "asc");
     } else {
@@ -161,7 +168,7 @@ export default function BalancesPage() {
     }
   };
 
-  const SortIcon = ({ field }: { field: keyof CustomerBalance }) => {
+  const SortIcon = ({ field }: { field: SortableField }) => {
     if (sortField !== field) return null;
     return sortDirection === "asc" ? "↑" : "↓";
   };
@@ -301,11 +308,23 @@ export default function BalancesPage() {
                       <SortIcon field="kwdBalance" />
                     </div>
                   </th>
-                  <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Transactions
+                  <th 
+                    className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100"
+                    onClick={() => handleSort("voucherCount")}
+                  >
+                    <div className="flex items-center justify-center space-x-1">
+                      <span>Transactions</span>
+                      <SortIcon field="voucherCount" />
+                    </div>
                   </th>
-                  <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Last Activity
+                  <th 
+                    className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100"
+                    onClick={() => handleSort("lastTransactionDate")}
+                  >
+                    <div className="flex items-center justify-center space-x-1">
+                      <span>Last Activity</span>
+                      <SortIcon field="lastTransactionDate" />
+                    </div>
                   </th>
                   <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Actions
