@@ -45,8 +45,6 @@ interface LedgerEntry {
   isClosingBalance?: boolean;
 }
 
-type SortField = 'date' | 'customer' | 'type' | 'goldDebit' | 'goldCredit' | 'kwdDebit' | 'kwdCredit';
-
 // Helper function to get current month date range
 const getCurrentMonthRange = () => {
   const now = new Date();
@@ -66,15 +64,11 @@ export default function FullLedgerPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   
-  // Filters - removed searchTerm, selectedCustomer, selectedType
+  // Filters - only date range
   const [dateRange, setDateRange] = useState({
     start: "",
     end: ""
   });
-  
-  // Sorting
-  const [sortField, setSortField] = useState<SortField>("date");
-  const [sortDirection, setSortDirection] = useState<"asc" | "desc">("asc");
 
   // Set current month as default on component mount
   useEffect(() => {
@@ -222,79 +216,23 @@ export default function FullLedgerPage() {
     };
   };
 
-  // Apply filters and sorting - removed search, customer, and type filters
-  const filteredAndSortedEntries = ledgerEntries
-    .filter((entry) => {
-      // Date range filter only
-      const entryDate = new Date(entry.date);
-      const startDate = dateRange.start ? new Date(dateRange.start) : null;
-      const endDate = dateRange.end ? new Date(dateRange.end) : null;
-      
-      const matchesDateRange = 
-        (!startDate || entryDate >= startDate) && 
-        (!endDate || entryDate <= endDate);
+  // Apply date range filter only - no sorting
+  const filteredEntries = ledgerEntries.filter((entry) => {
+    // Date range filter only
+    const entryDate = new Date(entry.date);
+    const startDate = dateRange.start ? new Date(dateRange.start) : null;
+    const endDate = dateRange.end ? new Date(dateRange.end) : null;
+    
+    const matchesDateRange = 
+      (!startDate || entryDate >= startDate) && 
+      (!endDate || entryDate <= endDate);
 
-      return matchesDateRange;
-    })
-    .sort((a, b) => {
-      let aValue: string | number | Date;
-      let bValue: string | number | Date;
-
-      // Handle nested fields and different data types
-      switch (sortField) {
-        case 'customer':
-          aValue = a.customer.name;
-          bValue = b.customer.name;
-          break;
-        case 'date':
-          aValue = new Date(a.date);
-          bValue = new Date(b.date);
-          break;
-        case 'type':
-          aValue = a.type;
-          bValue = b.type;
-          break;
-        case 'goldDebit':
-          aValue = a.goldDebit;
-          bValue = b.goldDebit;
-          break;
-        case 'goldCredit':
-          aValue = a.goldCredit;
-          bValue = b.goldCredit;
-          break;
-        case 'kwdDebit':
-          aValue = a.kwdDebit;
-          bValue = b.kwdDebit;
-          break;
-        case 'kwdCredit':
-          aValue = a.kwdCredit;
-          bValue = b.kwdCredit;
-          break;
-        default:
-          aValue = a[sortField];
-          bValue = b[sortField];
-      }
-
-      // Handle date comparison
-      if (aValue instanceof Date && bValue instanceof Date) {
-        if (sortDirection === "asc") {
-          return aValue.getTime() - bValue.getTime();
-        } else {
-          return bValue.getTime() - aValue.getTime();
-        }
-      }
-
-      // Handle string and number comparison
-      if (sortDirection === "asc") {
-        return aValue > bValue ? 1 : -1;
-      } else {
-        return aValue < bValue ? 1 : -1;
-      }
-    });
+    return matchesDateRange;
+  });
 
   // Add opening and closing balance rows
   const openingBalance = calculateOpeningBalance();
-  const closingBalance = calculateClosingBalance(filteredAndSortedEntries);
+  const closingBalance = calculateClosingBalance(filteredEntries);
   
   const entriesWithBalances: LedgerEntry[] = [
     // Opening balance row
@@ -312,7 +250,7 @@ export default function FullLedgerPage() {
       kwdBalance: openingBalance.kwd,
       isOpeningBalance: true,
     },
-    ...filteredAndSortedEntries,
+    ...filteredEntries,
     // Closing balance row
     {
       date: dateRange.end || "Current",
@@ -331,24 +269,10 @@ export default function FullLedgerPage() {
   ];
 
   // Calculate totals for filtered results only (excluding opening/closing rows)
-  const totalGoldDebit = filteredAndSortedEntries.reduce((sum, entry) => sum + entry.goldDebit, 0);
-  const totalGoldCredit = filteredAndSortedEntries.reduce((sum, entry) => sum + entry.goldCredit, 0);
-  const totalKWDDebit = filteredAndSortedEntries.reduce((sum, entry) => sum + entry.kwdDebit, 0);
-  const totalKWDCredit = filteredAndSortedEntries.reduce((sum, entry) => sum + entry.kwdCredit, 0);
-
-  const handleSort = (field: SortField) => {
-    if (sortField === field) {
-      setSortDirection(sortDirection === "asc" ? "desc" : "asc");
-    } else {
-      setSortField(field);
-      setSortDirection("asc");
-    }
-  };
-
-  const SortIcon = ({ field }: { field: SortField }) => {
-    if (sortField !== field) return null;
-    return sortDirection === "asc" ? "↑" : "↓";
-  };
+  const totalGoldDebit = filteredEntries.reduce((sum, entry) => sum + entry.goldDebit, 0);
+  const totalGoldCredit = filteredEntries.reduce((sum, entry) => sum + entry.goldCredit, 0);
+  const totalKWDDebit = filteredEntries.reduce((sum, entry) => sum + entry.kwdDebit, 0);
+  const totalKWDCredit = filteredEntries.reduce((sum, entry) => sum + entry.kwdCredit, 0);
 
   const clearFilters = () => {
     setDateRange(getCurrentMonthRange()); // Reset to current month
@@ -422,7 +346,7 @@ export default function FullLedgerPage() {
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
           <div className="bg-gradient-to-r from-purple-500 to-purple-600 text-white rounded-2xl p-6 text-center shadow-lg">
             <p className="text-sm font-medium mb-2">Filtered Transactions</p>
-            <p className="text-3xl font-bold">{filteredAndSortedEntries.length}</p>
+            <p className="text-3xl font-bold">{filteredEntries.length}</p>
           </div>
           <div className="bg-gradient-to-r from-yellow-500 to-yellow-600 text-white rounded-2xl p-6 text-center shadow-lg">
             <p className="text-sm font-medium mb-2">Opening Gold Balance</p>
@@ -521,7 +445,7 @@ export default function FullLedgerPage() {
           <div className="flex flex-col sm:flex-row justify-between items-center">
             <div>
               <h3 className="text-lg font-semibold text-gray-900">
-                Showing {filteredAndSortedEntries.length} of {ledgerEntries.length} transactions
+                Showing {filteredEntries.length} of {ledgerEntries.length} transactions
               </h3>
               <p className="text-sm text-gray-600">
                 {dateRange.start || dateRange.end ? "Filtered by date range" : "All transactions"}
@@ -550,74 +474,32 @@ export default function FullLedgerPage() {
             <table className="min-w-full divide-y divide-gray-200">
               <thead className="bg-gray-50">
                 <tr>
-                  <th 
-                    className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100"
-                    onClick={() => handleSort("date")}
-                  >
-                    <div className="flex items-center space-x-1">
-                      <span>Date</span>
-                      <SortIcon field="date" />
-                    </div>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Date
                   </th>
-                  <th 
-                    className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100"
-                    onClick={() => handleSort("customer")}
-                  >
-                    <div className="flex items-center space-x-1">
-                      <span>Customer</span>
-                      <SortIcon field="customer" />
-                    </div>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Customer
                   </th>
-                  <th 
-                    className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100"
-                    onClick={() => handleSort("type")}
-                  >
-                    <div className="flex items-center space-x-1">
-                      <span>Type</span>
-                      <SortIcon field="type" />
-                    </div>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Type
                   </th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Description
                   </th>
-                  <th 
-                    className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100"
-                    onClick={() => handleSort("goldDebit")}
-                  >
-                    <div className="flex items-center justify-end space-x-1">
-                      <span>Gold Debit (g)</span>
-                      <SortIcon field="goldDebit" />
-                    </div>
+                  <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Gold Debit (g)
                   </th>
-                  <th 
-                    className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100"
-                    onClick={() => handleSort("goldCredit")}
-                  >
-                    <div className="flex items-center justify-end space-x-1">
-                      <span>Gold Credit (g)</span>
-                      <SortIcon field="goldCredit" />
-                    </div>
+                  <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Gold Credit (g)
                   </th>
                   <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Gold Balance (g)
                   </th>
-                  <th 
-                    className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100"
-                    onClick={() => handleSort("kwdDebit")}
-                  >
-                    <div className="flex items-center justify-end space-x-1">
-                      <span>KWD Debit</span>
-                      <SortIcon field="kwdDebit" />
-                    </div>
+                  <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    KWD Debit
                   </th>
-                  <th 
-                    className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100"
-                    onClick={() => handleSort("kwdCredit")}
-                  >
-                    <div className="flex items-center justify-end space-x-1">
-                      <span>KWD Credit</span>
-                      <SortIcon field="kwdCredit" />
-                    </div>
+                  <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    KWD Credit
                   </th>
                   <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
                     KWD Balance
