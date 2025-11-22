@@ -33,6 +33,15 @@ export default function CreateCustomer() {
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [customersLoading, setCustomersLoading] = useState(true);
 
+  // Calculate stats
+  const totalCustomers = customers.length;
+  const latestAccountNo = customers.length > 0 
+    ? Math.max(...customers.map(c => parseInt(c.accountNo)).filter(n => !isNaN(n)))
+    : 0;
+  const nextAccountNo = customers.length > 0 
+    ? (latestAccountNo + 1).toString() 
+    : "1001";
+
   // Fetch customers and calculate next account number
   useEffect(() => {
     const fetchCustomers = async () => {
@@ -255,7 +264,7 @@ export default function CreateCustomer() {
                 </div>
                 <div>
                   <h2 className="text-2xl font-bold text-gray-900">Existing Customers</h2>
-                  <p className="text-gray-600">{customers.length} customer(s) found</p>
+                  <p className="text-gray-600">{totalCustomers} customer(s) found</p>
                 </div>
               </div>
 
@@ -332,19 +341,15 @@ export default function CreateCustomer() {
                   {/* Quick Stats */}
                   <div className="mt-6 grid grid-cols-1 sm:grid-cols-3 gap-4">
                     <div className="bg-blue-50 rounded-lg p-4 text-center">
-                      <p className="text-2xl font-bold text-blue-600">{customers.length}</p>
+                      <p className="text-2xl font-bold text-blue-600">{totalCustomers}</p>
                       <p className="text-sm text-blue-800">Total Customers</p>
                     </div>
                     <div className="bg-green-50 rounded-lg p-4 text-center">
-                      <p className="text-2xl font-bold text-green-600">
-                        {customers.length > 0 ? Math.max(...customers.map(c => parseInt(c.accountNo)) : 0}
-                      </p>
+                      <p className="text-2xl font-bold text-green-600">{latestAccountNo}</p>
                       <p className="text-sm text-green-800">Latest Account No</p>
                     </div>
                     <div className="bg-purple-50 rounded-lg p-4 text-center">
-                      <p className="text-2xl font-bold text-purple-600">
-                        {customers.length > 0 ? (parseInt(customers[customers.length - 1].accountNo) + 1).toString() : "1001"}
-                      </p>
+                      <p className="text-2xl font-bold text-purple-600">{nextAccountNo}</p>
                       <p className="text-sm text-purple-800">Next Account No</p>
                     </div>
                   </div>
