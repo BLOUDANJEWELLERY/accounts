@@ -69,7 +69,7 @@ export default function LedgerPage() {
         setCustomer(customerData.customer);
 
         // Fetch vouchers for this customer
-        const vouchersRes = await fetch(`/api/vouchers/customer/${customerData.customer.id}`);
+        const vouchersRes = await fetch(`/api/voucher/customer/${customerData.customer.id}`);
         if (!vouchersRes.ok) {
           throw new Error("Failed to fetch vouchers");
         }
