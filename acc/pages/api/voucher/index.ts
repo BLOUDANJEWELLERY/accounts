@@ -7,9 +7,9 @@ const prisma = new PrismaClient();
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   // Only allow GET requests
   if (req.method !== 'GET') {
-    return res.status(405).json({ 
-      success: false, 
-      message: 'Method not allowed' 
+    return res.status(405).json({
+      success: false,
+      message: 'Method not allowed',
     });
   }
 
@@ -19,16 +19,16 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     // Get all vouchers from the database
     const vouchers = await prisma.voucher.findMany({
       orderBy: {
-        date: 'asc', // Sort by date ascending for chronological order
+        date: 'asc', // Chronological order
       },
     });
 
     console.log(`Found ${vouchers.length} vouchers`);
 
     // Transform the data to match the frontend interface
-    const transformedVouchers = vouchers.map(voucher => ({
+    const transformedVouchers = vouchers.map((voucher) => ({
       id: voucher.id,
-      voucherType: voucher.voucherType as "INV" | "REC",
+      voucherType: voucher.voucherType as 'INV' | 'REC',
       date: voucher.date.toISOString(),
       totalNet: voucher.totalNet,
       totalKWD: voucher.totalKWD,
@@ -46,11 +46,16 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
   } catch (error) {
     console.error('Error fetching vouchers:', error);
-    
+
+    const message =
+      process.env.NODE_ENV === 'development' && error instanceof Error
+        ? error.message
+        : undefined;
+
     return res.status(500).json({
       success: false,
       message: 'Internal server error',
-      error: process.env.NODE_ENV === 'development' ? error.message : undefined,
+      error: message,
     });
   } finally {
     await prisma.$disconnect();
