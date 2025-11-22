@@ -15,24 +15,29 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   try {
     const voucher = await prisma.voucher.findUnique({
       where: { id },
+      select: {
+        id: true,
+        accountId: true,
+        voucherType: true,
+        date: true,       // ← HERE: only this date field
+        rows: true,
+        totalNet: true,
+        totalKWD: true,
+      },
     });
 
     if (!voucher) {
       return res.status(404).json({ success: false, error: "Voucher not found" });
     }
 
-    // Parse rows JSON if stored as string
-    const rows = typeof voucher.rows === "string" ? JSON.parse(voucher.rows) : voucher.rows;
+    const rows =
+      typeof voucher.rows === "string" ? JSON.parse(voucher.rows) : voucher.rows;
 
     return res.status(200).json({
       success: true,
       voucher: {
-        id: voucher.id,
-        accountId: voucher.accountId,
-        voucherType: voucher.voucherType,
+        ...voucher,
         rows,
-        totalNet: voucher.totalNet,
-        totalKWD: voucher.totalKWD,
       },
     });
   } catch (err) {
