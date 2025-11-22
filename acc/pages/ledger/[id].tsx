@@ -307,9 +307,9 @@ export default function LedgerPage() {
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-right text-gray-900 font-mono">
                         {entry.credit > 0 ? entry.credit.toFixed(3) : "-"}
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-right font-mono font-semibold ${
+                      <td className={`px-6 py-4 whitespace-nowrap text-sm text-right font-mono font-semibold ${
                         entry.balance >= 0 ? "text-blue-600" : "text-red-600"
-                      }">
+                      }`}>
                         {entry.balance.toFixed(3)}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
@@ -341,9 +341,9 @@ export default function LedgerPage() {
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-right text-gray-900 font-mono font-bold">
                       {totalCredit.toFixed(3)}
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-right font-mono font-bold ${
+                    <td className={`px-6 py-4 whitespace-nowrap text-sm text-right font-mono font-bold ${
                       currentBalance >= 0 ? "text-blue-600" : "text-red-600"
-                    }">
+                    }`}>
                       {currentBalance.toFixed(3)}
                     </td>
                     <td></td>
