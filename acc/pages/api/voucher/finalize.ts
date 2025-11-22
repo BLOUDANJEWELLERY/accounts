@@ -16,6 +16,7 @@ interface VoucherRow {
 }
 
 interface Customer {
+  id: string;
   name: string;
   accountNo: string;
   phone: string;
@@ -43,18 +44,21 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       customerSign: string;
     };
 
-    // Fetch voucher with customer data
+    // Fetch voucher data
     const voucher = await prisma.voucher.findUnique({ 
-      where: { id: voucherId },
-      include: {
-        customer: true
-      }
+      where: { id: voucherId }
     });
     
     if (!voucher) return res.status(404).json({ success: false, error: "Voucher not found" });
 
+    // Fetch customer data separately since there's no relation in schema
+    const customer = await prisma.customer.findUnique({
+      where: { id: voucher.accountId }
+    });
+
+    if (!customer) return res.status(404).json({ success: false, error: "Customer not found" });
+
     const rows: VoucherRow[] = JSON.parse(voucher.rows);
-    const customer: Customer = voucher.customer;
 
     // Create PDF with A4 size
     const pdfDoc = await PDFDocument.create();
@@ -75,7 +79,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const borderColor = rgb(209 / 255, 213 / 255, 219 / 255); // Gray-300
 
     // Draw background gradient (subtle)
-    const gradient = page.drawRectangle({
+    page.drawRectangle({
       x: 0,
       y: height - 120,
       width: width,
