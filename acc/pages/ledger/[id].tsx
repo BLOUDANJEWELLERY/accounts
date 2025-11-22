@@ -35,6 +35,7 @@ interface LedgerEntry {
   pdfUrl?: string;
   isOpeningBalance?: boolean;
   isClosingBalance?: boolean;
+  originalDate?: string; // Store original ISO date for filtering
 }
 
 interface VoucherRow {
@@ -108,9 +109,9 @@ export default function LedgerPage() {
         let runningGoldBalance = 0;
         let runningKWDBalance = 0;
 
-        // Sort vouchers by date
+        // Sort vouchers by date (using ISO string comparison)
         const sortedVouchers = [...vouchersData.vouchers].sort(
-          (a, b) => new Date(a.date).getTime() - new Date(b.date).getTime()
+          (a, b) => a.date.localeCompare(b.date)
         );
 
         sortedVouchers.forEach((voucher) => {
@@ -122,7 +123,7 @@ export default function LedgerPage() {
             runningGoldBalance += voucher.totalNet;
             runningKWDBalance += voucher.totalKWD;
             entries.push({
-              date: new Date(voucher.date).toLocaleDateString(),
+              date: new Date(voucher.date).toLocaleDateString(), // For display
               voucherId: voucher.id,
               type: "INV",
               description: `Invoice - ${description}`,
@@ -133,13 +134,14 @@ export default function LedgerPage() {
               kwdCredit: 0,
               kwdBalance: runningKWDBalance,
               pdfUrl: voucher.pdfUrl,
+              originalDate: voucher.date // Store original ISO date for filtering
             });
           } else {
             // REC (Receipt) - Credit both gold and KWD
             runningGoldBalance -= voucher.totalNet;
             runningKWDBalance -= voucher.totalKWD;
             entries.push({
-              date: new Date(voucher.date).toLocaleDateString(),
+              date: new Date(voucher.date).toLocaleDateString(), // For display
               voucherId: voucher.id,
               type: "REC",
               description: `Receipt - ${description}`,
@@ -150,12 +152,12 @@ export default function LedgerPage() {
               kwdCredit: voucher.totalKWD,
               kwdBalance: runningKWDBalance,
               pdfUrl: voucher.pdfUrl,
+              originalDate: voucher.date // Store original ISO date for filtering
             });
           }
         });
 
         setAllLedgerEntries(entries);
-        setFilteredLedgerEntries(entries);
       } catch (err) {
         console.error("Error fetching ledger data:", err);
         setError(err instanceof Error ? err.message : "Failed to load ledger data");
@@ -172,10 +174,12 @@ export default function LedgerPage() {
     if (allLedgerEntries.length === 0) return;
 
     const filtered = allLedgerEntries.filter((entry) => {
-      const entryDate = new Date(entry.date);
-      const startDate = dateRange.start ? new Date(dateRange.start) : null;
-      const endDate = dateRange.end ? new Date(dateRange.end) : null;
+      // Use originalDate for filtering (ISO format from database)
+      const entryDate = entry.originalDate || entry.date;
+      const startDate = dateRange.start;
+      const endDate = dateRange.end;
       
+      // Simple string comparison since dates are in ISO format (YYYY-MM-DD)
       const matchesDateRange = 
         (!startDate || entryDate >= startDate) && 
         (!endDate || entryDate <= endDate);
@@ -192,13 +196,13 @@ export default function LedgerPage() {
       return { gold: 0, kwd: 0 };
     }
 
-    const startDate = new Date(dateRange.start);
+    const startDate = dateRange.start;
     let openingGoldBalance = 0;
     let openingKWDBalance = 0;
 
     // Find the last entry before the start date
     for (let i = allLedgerEntries.length - 1; i >= 0; i--) {
-      const entryDate = new Date(allLedgerEntries[i].date);
+      const entryDate = allLedgerEntries[i].originalDate || allLedgerEntries[i].date;
       if (entryDate < startDate) {
         openingGoldBalance = allLedgerEntries[i].goldBalance;
         openingKWDBalance = allLedgerEntries[i].kwdBalance;
@@ -222,14 +226,14 @@ export default function LedgerPage() {
     };
   };
 
-  // Add opening and closing balance rows
+  // Add opening and closing balance rows only if we have a date range
   const openingBalance = calculateOpeningBalance();
   const closingBalance = calculateClosingBalance();
   
   const entriesWithBalances: LedgerEntry[] = [
-    // Opening balance row
-    {
-      date: dateRange.start || "Beginning",
+    // Opening balance row (only show if we have a date range)
+    ...(dateRange.start ? [{
+      date: dateRange.start,
       voucherId: "opening-balance",
       type: "INV",
       description: "Balance brought forward",
@@ -240,11 +244,11 @@ export default function LedgerPage() {
       kwdCredit: 0,
       kwdBalance: openingBalance.kwd,
       isOpeningBalance: true,
-    },
+    }] : []),
     ...filteredLedgerEntries,
-    // Closing balance row
-    {
-      date: dateRange.end || "Current",
+    // Closing balance row (only show if we have a date range)
+    ...(dateRange.end ? [{
+      date: dateRange.end,
       voucherId: "closing-balance",
       type: "INV",
       description: "Balance carried forward",
@@ -255,7 +259,7 @@ export default function LedgerPage() {
       kwdCredit: 0,
       kwdBalance: closingBalance.kwd,
       isClosingBalance: true,
-    }
+    }] : [])
   ];
 
   // Calculate totals for filtered results only (excluding opening/closing rows)
@@ -273,7 +277,7 @@ export default function LedgerPage() {
     : 0;
 
   const clearFilters = () => {
-    setDateRange(getCurrentMonthRange());
+    setDateRange({ start: "", end: "" });
   };
 
   const setCurrentMonth = () => {
@@ -433,7 +437,7 @@ export default function LedgerPage() {
           <div className="flex flex-wrap gap-2">
             {dateRange.start && (
               <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-green-100 text-green-800">
-                From: {dateRange.start}
+                From: {new Date(dateRange.start).toLocaleDateString()}
                 <button
                   onClick={() => setDateRange(prev => ({ ...prev, start: "" }))}
                   className="ml-1 hover:text-green-900"
@@ -444,7 +448,7 @@ export default function LedgerPage() {
             )}
             {dateRange.end && (
               <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-green-100 text-green-800">
-                To: {dateRange.end}
+                To: {new Date(dateRange.end).toLocaleDateString()}
                 <button
                   onClick={() => setDateRange(prev => ({ ...prev, end: "" }))}
                   className="ml-1 hover:text-green-900"
@@ -526,8 +530,12 @@ export default function LedgerPage() {
               <svg className="w-16 h-16 text-gray-300 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
               </svg>
-              <h3 className="text-lg font-medium text-gray-900 mb-2">No transactions yet</h3>
-              <p className="text-gray-500">This customer hasn&apos;t made any transactions</p>
+              <h3 className="text-lg font-medium text-gray-900 mb-2">No transactions found</h3>
+              <p className="text-gray-500">
+                {dateRange.start || dateRange.end 
+                  ? "No transactions match the selected date range" 
+                  : "This customer hasn't made any transactions"}
+              </p>
             </div>
           ) : (
             <div className="overflow-x-auto">
@@ -576,7 +584,10 @@ export default function LedgerPage() {
                       }`}
                     >
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                        {entry.date}
+                        {entry.isOpeningBalance || entry.isClosingBalance 
+                          ? new Date(entry.date).toLocaleDateString() 
+                          : entry.date
+                        }
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
                         {!entry.isOpeningBalance && !entry.isClosingBalance ? (
