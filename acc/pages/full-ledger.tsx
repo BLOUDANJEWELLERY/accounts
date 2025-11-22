@@ -41,13 +41,28 @@ interface LedgerEntry {
   kwdCredit: number;
   kwdBalance: number;
   pdfUrl?: string;
+  isOpeningBalance?: boolean;
+  isClosingBalance?: boolean;
 }
 
 type SortField = 'date' | 'customer' | 'type' | 'goldDebit' | 'goldCredit' | 'kwdDebit' | 'kwdCredit';
 
+// Helper function to get current month date range
+const getCurrentMonthRange = () => {
+  const now = new Date();
+  const firstDay = new Date(now.getFullYear(), now.getMonth(), 1);
+  const lastDay = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+  
+  return {
+    start: firstDay.toISOString().split('T')[0],
+    end: lastDay.toISOString().split('T')[0]
+  };
+};
+
 export default function FullLedgerPage() {
   const router = useRouter();
   const [ledgerEntries, setLedgerEntries] = useState<LedgerEntry[]>([]);
+  const [allLedgerEntries, setAllLedgerEntries] = useState<LedgerEntry[]>([]); // Store all entries for running balance
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   
@@ -62,10 +77,16 @@ export default function FullLedgerPage() {
   
   // Sorting
   const [sortField, setSortField] = useState<SortField>("date");
-  const [sortDirection, setSortDirection] = useState<"asc" | "desc">("desc");
+  const [sortDirection, setSortDirection] = useState<"asc" | "desc">("asc");
 
   // Customers list for filter
   const [customers, setCustomers] = useState<Customer[]>([]);
+
+  // Set current month as default on component mount
+  useEffect(() => {
+    const currentMonth = getCurrentMonthRange();
+    setDateRange(currentMonth);
+  }, []);
 
   // Fetch all data for full ledger
   useEffect(() => {
@@ -86,7 +107,7 @@ export default function FullLedgerPage() {
         console.log("Fetched customers:", customersData.customers.length);
 
         // Fetch all vouchers
-        const vouchersRes = await fetch("/api/voucher");
+        const vouchersRes = await fetch("/api/vouchers");
         if (!vouchersRes.ok) {
           throw new Error("Failed to fetch vouchers");
         }
@@ -159,7 +180,8 @@ export default function FullLedgerPage() {
         });
 
         console.log("Processed ledger entries:", entries.length);
-        setLedgerEntries(entries);
+        setAllLedgerEntries(entries); // Store all entries for running balance calculation
+        setLedgerEntries(entries); // This will be filtered based on current filters
       } catch (err) {
         console.error("Error fetching full ledger:", err);
         setError(err instanceof Error ? err.message : "Failed to load full ledger");
@@ -170,6 +192,42 @@ export default function FullLedgerPage() {
 
     fetchFullLedger();
   }, []);
+
+  // Calculate opening balance (balance before the date range)
+  const calculateOpeningBalance = () => {
+    if (!dateRange.start || allLedgerEntries.length === 0) {
+      return { gold: 0, kwd: 0 };
+    }
+
+    const startDate = new Date(dateRange.start);
+    let openingGoldBalance = 0;
+    let openingKWDBalance = 0;
+
+    // Find the last entry before the start date
+    for (let i = allLedgerEntries.length - 1; i >= 0; i--) {
+      const entryDate = new Date(allLedgerEntries[i].date);
+      if (entryDate < startDate) {
+        openingGoldBalance = allLedgerEntries[i].goldBalance;
+        openingKWDBalance = allLedgerEntries[i].kwdBalance;
+        break;
+      }
+    }
+
+    return { gold: openingGoldBalance, kwd: openingKWDBalance };
+  };
+
+  // Calculate closing balance (balance at the end of date range)
+  const calculateClosingBalance = (filteredEntries: LedgerEntry[]) => {
+    if (filteredEntries.length === 0) {
+      return calculateOpeningBalance();
+    }
+
+    const lastEntry = filteredEntries[filteredEntries.length - 1];
+    return { 
+      gold: lastEntry.goldBalance, 
+      kwd: lastEntry.kwdBalance 
+    };
+  };
 
   // Apply filters and sorting
   const filteredAndSortedEntries = ledgerEntries
@@ -256,26 +314,56 @@ export default function FullLedgerPage() {
       }
     });
 
-  // Calculate totals for filtered results
+  // Add opening and closing balance rows
+  const openingBalance = calculateOpeningBalance();
+  const closingBalance = calculateClosingBalance(filteredAndSortedEntries);
+  
+  const entriesWithBalances: LedgerEntry[] = [
+    // Opening balance row
+    {
+      date: dateRange.start || "Beginning",
+      voucherId: "opening-balance",
+      customer: { id: "", accountNo: "", name: "Opening Balance", phone: "", civilId: "" },
+      type: "INV",
+      description: "Balance brought forward",
+      goldDebit: 0,
+      goldCredit: 0,
+      goldBalance: openingBalance.gold,
+      kwdDebit: 0,
+      kwdCredit: 0,
+      kwdBalance: openingBalance.kwd,
+      isOpeningBalance: true,
+    },
+    ...filteredAndSortedEntries,
+    // Closing balance row
+    {
+      date: dateRange.end || "Current",
+      voucherId: "closing-balance",
+      customer: { id: "", accountNo: "", name: "Closing Balance", phone: "", civilId: "" },
+      type: "INV",
+      description: "Balance carried forward",
+      goldDebit: 0,
+      goldCredit: 0,
+      goldBalance: closingBalance.gold,
+      kwdDebit: 0,
+      kwdCredit: 0,
+      kwdBalance: closingBalance.kwd,
+      isClosingBalance: true,
+    }
+  ];
+
+  // Calculate totals for filtered results only (excluding opening/closing rows)
   const totalGoldDebit = filteredAndSortedEntries.reduce((sum, entry) => sum + entry.goldDebit, 0);
   const totalGoldCredit = filteredAndSortedEntries.reduce((sum, entry) => sum + entry.goldCredit, 0);
   const totalKWDDebit = filteredAndSortedEntries.reduce((sum, entry) => sum + entry.kwdDebit, 0);
   const totalKWDCredit = filteredAndSortedEntries.reduce((sum, entry) => sum + entry.kwdCredit, 0);
-
-  // Get current balances from the last entry (if available)
-  const currentGoldBalance = filteredAndSortedEntries.length > 0 
-    ? filteredAndSortedEntries[filteredAndSortedEntries.length - 1].goldBalance 
-    : 0;
-  const currentKWDBalance = filteredAndSortedEntries.length > 0 
-    ? filteredAndSortedEntries[filteredAndSortedEntries.length - 1].kwdBalance 
-    : 0;
 
   const handleSort = (field: SortField) => {
     if (sortField === field) {
       setSortDirection(sortDirection === "asc" ? "desc" : "asc");
     } else {
       setSortField(field);
-      setSortDirection("desc");
+      setSortDirection("asc");
     }
   };
 
@@ -286,9 +374,24 @@ export default function FullLedgerPage() {
 
   const clearFilters = () => {
     setSearchTerm("");
-    setDateRange({ start: "", end: "" });
+    setDateRange(getCurrentMonthRange()); // Reset to current month instead of clearing
     setSelectedCustomer("all");
     setSelectedType("all");
+  };
+
+  const setCurrentMonth = () => {
+    setDateRange(getCurrentMonthRange());
+  };
+
+  const setLastMonth = () => {
+    const now = new Date();
+    const firstDayLastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+    const lastDayLastMonth = new Date(now.getFullYear(), now.getMonth(), 0);
+    
+    setDateRange({
+      start: firstDayLastMonth.toISOString().split('T')[0],
+      end: lastDayLastMonth.toISOString().split('T')[0]
+    });
   };
 
   if (loading) {
@@ -343,16 +446,16 @@ export default function FullLedgerPage() {
         {/* Summary Cards */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
           <div className="bg-gradient-to-r from-purple-500 to-purple-600 text-white rounded-2xl p-6 text-center shadow-lg">
-            <p className="text-sm font-medium mb-2">Total Transactions</p>
+            <p className="text-sm font-medium mb-2">Filtered Transactions</p>
             <p className="text-3xl font-bold">{filteredAndSortedEntries.length}</p>
           </div>
           <div className="bg-gradient-to-r from-yellow-500 to-yellow-600 text-white rounded-2xl p-6 text-center shadow-lg">
-            <p className="text-sm font-medium mb-2">Net Gold Balance</p>
-            <p className="text-2xl font-bold">{currentGoldBalance.toFixed(3)} g</p>
+            <p className="text-sm font-medium mb-2">Opening Gold Balance</p>
+            <p className="text-2xl font-bold">{openingBalance.gold.toFixed(3)} g</p>
           </div>
           <div className="bg-gradient-to-r from-blue-500 to-blue-600 text-white rounded-2xl p-6 text-center shadow-lg">
-            <p className="text-sm font-medium mb-2">Net KWD Balance</p>
-            <p className="text-2xl font-bold">{currentKWDBalance.toFixed(3)} KWD</p>
+            <p className="text-sm font-medium mb-2">Opening KWD Balance</p>
+            <p className="text-2xl font-bold">{openingBalance.kwd.toFixed(3)} KWD</p>
           </div>
           <div className="bg-gradient-to-r from-green-500 to-green-600 text-white rounded-2xl p-6 text-center shadow-lg">
             <p className="text-sm font-medium mb-2">Total Customers</p>
@@ -422,7 +525,7 @@ export default function FullLedgerPage() {
               </div>
             </div>
 
-            {/* Type Filter and Clear Button */}
+            {/* Type Filter and Buttons */}
             <div className="flex flex-col sm:flex-row gap-4 lg:items-end">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Type</label>
@@ -437,12 +540,26 @@ export default function FullLedgerPage() {
                 </select>
               </div>
 
-              <button
-                onClick={clearFilters}
-                className="px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition-colors"
-              >
-                Clear Filters
-              </button>
+              <div className="flex gap-2">
+                <button
+                  onClick={setCurrentMonth}
+                  className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+                >
+                  Current Month
+                </button>
+                <button
+                  onClick={setLastMonth}
+                  className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors"
+                >
+                  Last Month
+                </button>
+                <button
+                  onClick={clearFilters}
+                  className="px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition-colors"
+                >
+                  Clear Filters
+                </button>
+              </div>
             </div>
           </div>
 
@@ -521,15 +638,15 @@ export default function FullLedgerPage() {
             </div>
             <div className="flex gap-4 mt-4 sm:mt-0">
               <div className="text-center">
-                <p className="text-sm text-gray-600">Gold Total</p>
-                <p className="text-lg font-semibold text-purple-600">
-                  {(totalGoldDebit - totalGoldCredit).toFixed(3)} g
+                <p className="text-sm text-gray-600">Period Gold Change</p>
+                <p className={`text-lg font-semibold ${(closingBalance.gold - openingBalance.gold) >= 0 ? 'text-purple-600' : 'text-red-600'}`}>
+                  {(closingBalance.gold - openingBalance.gold).toFixed(3)} g
                 </p>
               </div>
               <div className="text-center">
-                <p className="text-sm text-gray-600">KWD Total</p>
-                <p className="text-lg font-semibold text-blue-600">
-                  {(totalKWDDebit - totalKWDCredit).toFixed(3)} KWD
+                <p className="text-sm text-gray-600">Period KWD Change</p>
+                <p className={`text-lg font-semibold ${(closingBalance.kwd - openingBalance.kwd) >= 0 ? 'text-blue-600' : 'text-orange-600'}`}>
+                  {(closingBalance.kwd - openingBalance.kwd).toFixed(3)} KWD
                 </p>
               </div>
             </div>
@@ -620,7 +737,7 @@ export default function FullLedgerPage() {
                 </tr>
               </thead>
               <tbody className="bg-white divide-y divide-gray-200">
-                {filteredAndSortedEntries.length === 0 ? (
+                {entriesWithBalances.length === 0 ? (
                   <tr>
                     <td colSpan={11} className="px-6 py-12 text-center">
                       <svg className="w-16 h-16 text-gray-300 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -635,25 +752,43 @@ export default function FullLedgerPage() {
                     </td>
                   </tr>
                 ) : (
-                  filteredAndSortedEntries.map((entry) => (
-                    <tr key={`${entry.voucherId}-${entry.date}`} className="hover:bg-gray-50 transition-colors duration-150">
+                  entriesWithBalances.map((entry, index) => (
+                    <tr 
+                      key={entry.voucherId} 
+                      className={`hover:bg-gray-50 transition-colors duration-150 ${
+                        entry.isOpeningBalance ? 'bg-blue-50' : 
+                        entry.isClosingBalance ? 'bg-green-50' : ''
+                      }`}
+                    >
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                         {entry.date}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
                         <div>
-                          <div className="text-sm font-semibold text-gray-900">{entry.customer.name}</div>
-                          <div className="text-sm text-gray-500">{entry.customer.accountNo}</div>
+                          <div className={`text-sm font-semibold ${
+                            entry.isOpeningBalance || entry.isClosingBalance ? 'text-gray-900 font-bold' : 'text-gray-900'
+                          }`}>
+                            {entry.customer.name}
+                          </div>
+                          {!entry.isOpeningBalance && !entry.isClosingBalance && (
+                            <div className="text-sm text-gray-500">{entry.customer.accountNo}</div>
+                          )}
                         </div>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
-                        <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                          entry.type === "INV" 
-                            ? "bg-blue-100 text-blue-800"
-                            : "bg-green-100 text-green-800"
-                        }`}>
-                          {entry.type}
-                        </span>
+                        {!entry.isOpeningBalance && !entry.isClosingBalance ? (
+                          <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                            entry.type === "INV" 
+                              ? "bg-blue-100 text-blue-800"
+                              : "bg-green-100 text-green-800"
+                          }`}>
+                            {entry.type}
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-800">
+                            BAL
+                          </span>
+                        )}
                       </td>
                       <td className="px-6 py-4 text-sm text-gray-900 max-w-xs truncate">
                         {entry.description}
@@ -683,7 +818,7 @@ export default function FullLedgerPage() {
                         {entry.kwdBalance.toFixed(3)}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                        {entry.pdfUrl && (
+                        {entry.pdfUrl && !entry.isOpeningBalance && !entry.isClosingBalance && (
                           <a
                             href={entry.pdfUrl}
                             target="_blank"
@@ -701,11 +836,11 @@ export default function FullLedgerPage() {
                   ))
                 )}
               </tbody>
-              {filteredAndSortedEntries.length > 0 && (
+              {entriesWithBalances.length > 0 && (
                 <tfoot className="bg-gray-50 border-t border-gray-200">
                   <tr>
                     <td colSpan={4} className="px-6 py-4 text-sm font-medium text-gray-900 text-right">
-                      Filtered Totals:
+                      Filtered Period Totals:
                     </td>
                     {/* Gold Totals */}
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-right text-gray-900 font-mono font-bold">
@@ -715,9 +850,9 @@ export default function FullLedgerPage() {
                       {totalGoldCredit.toFixed(3)}
                     </td>
                     <td className={`px-6 py-4 whitespace-nowrap text-sm text-right font-mono font-bold ${
-                      currentGoldBalance >= 0 ? "text-purple-600" : "text-red-600"
+                      closingBalance.gold >= 0 ? "text-purple-600" : "text-red-600"
                     }`}>
-                      {currentGoldBalance.toFixed(3)}
+                      {closingBalance.gold.toFixed(3)}
                     </td>
                     {/* KWD Totals */}
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-right text-gray-900 font-mono font-bold">
@@ -727,9 +862,9 @@ export default function FullLedgerPage() {
                       {totalKWDCredit.toFixed(3)}
                     </td>
                     <td className={`px-6 py-4 whitespace-nowrap text-sm text-right font-mono font-bold ${
-                      currentKWDBalance >= 0 ? "text-blue-600" : "text-orange-600"
+                      closingBalance.kwd >= 0 ? "text-blue-600" : "text-orange-600"
                     }`}>
-                      {currentKWDBalance.toFixed(3)}
+                      {closingBalance.kwd.toFixed(3)}
                     </td>
                     <td></td>
                   </tr>
