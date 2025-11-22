@@ -107,7 +107,7 @@ export default function FullLedgerPage() {
         console.log("Fetched customers:", customersData.customers.length);
 
         // Fetch all vouchers
-        const vouchersRes = await fetch("/api/vouchers");
+        const vouchersRes = await fetch("/api/voucher");
         if (!vouchersRes.ok) {
           throw new Error("Failed to fetch vouchers");
         }
