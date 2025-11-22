@@ -1,25 +1,28 @@
-import type { NextApiRequest, NextApiResponse } from "next";
-import { prisma } from "../../../../server/prisma";
+import { NextApiRequest, NextApiResponse } from 'next';
+import prisma from '@/lib/prisma';
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   const { accountNo } = req.query;
 
-  if (typeof accountNo !== "string") {
-    return res.status(400).json({ error: "Invalid account number" });
-  }
+  if (req.method === 'GET') {
+    try {
+      const customer = await prisma.customer.findUnique({
+        where: {
+          accountNo: accountNo as string,
+        },
+      });
 
-  try {
-    const customer = await prisma.customer.findUnique({
-      where: { accountNo },
-    });
+      if (!customer) {
+        return res.status(404).json({ error: 'Customer not found' });
+      }
 
-    if (!customer) {
-      return res.status(404).json({ error: "Customer not found" });
+      res.status(200).json({ customer });
+    } catch (error) {
+      console.error('Error fetching customer:', error);
+      res.status(500).json({ error: 'Failed to fetch customer' });
     }
-
-    res.status(200).json({ customer });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: "Server error" });
+  } else {
+    res.setHeader('Allow', ['GET']);
+    res.status(405).end(`Method ${req.method} Not Allowed`);
   }
 }
