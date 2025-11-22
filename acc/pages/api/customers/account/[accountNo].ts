@@ -6,6 +6,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
   if (req.method === 'GET') {
     try {
+      // First get the customer to verify they exist
       const customer = await prisma.customer.findUnique({
         where: {
           accountNo: accountNo as string,
@@ -16,10 +17,20 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         return res.status(404).json({ error: 'Customer not found' });
       }
 
-      res.status(200).json({ customer });
+      // Then fetch vouchers for this customer using accountId
+      const vouchers = await prisma.voucher.findMany({
+        where: {
+          accountId: customer.id, // Using customer ID as accountId in Voucher model
+        },
+        orderBy: {
+          date: 'asc',
+        },
+      });
+
+      res.status(200).json({ vouchers });
     } catch (error) {
-      console.error('Error fetching customer:', error);
-      res.status(500).json({ error: 'Failed to fetch customer' });
+      console.error('Error fetching vouchers:', error);
+      res.status(500).json({ error: 'Failed to fetch vouchers' });
     }
   } else {
     res.setHeader('Allow', ['GET']);
