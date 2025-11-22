@@ -7,8 +7,9 @@ interface Voucher {
   id: string;
   voucherType: "INV" | "REC";
   date: string;
-  totalKWD: number;
-  rows: string; // JSON string of voucher rows
+  totalNet: number; // Gold amount
+  totalKWD: number; // KWD amount
+  rows: string;
   pdfUrl?: string;
 }
 
@@ -25,19 +26,19 @@ interface LedgerEntry {
   voucherId: string;
   type: "INV" | "REC";
   description: string;
-  debit: number;
-  credit: number;
-  balance: number;
+  goldDebit: number;
+  goldCredit: number;
+  goldBalance: number;
+  kwdDebit: number;
+  kwdCredit: number;
+  kwdBalance: number;
   pdfUrl?: string;
 }
 
-// Add interface for voucher row to replace 'any'
 interface VoucherRow {
   description: string;
-  // Add other properties that might be in the rows JSON
   amount?: number;
   item?: string;
-  // ... other possible properties
 }
 
 export default function LedgerPage() {
@@ -49,7 +50,8 @@ export default function LedgerPage() {
   const [ledgerEntries, setLedgerEntries] = useState<LedgerEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [currentBalance, setCurrentBalance] = useState(0);
+  const [currentGoldBalance, setCurrentGoldBalance] = useState(0);
+  const [currentKWDBalance, setCurrentKWDBalance] = useState(0);
 
   // Fetch customer and vouchers data
   useEffect(() => {
@@ -69,7 +71,7 @@ export default function LedgerPage() {
         setCustomer(customerData.customer);
 
         // Fetch vouchers for this customer
-        const vouchersRes = await fetch(`/api/voucher/customer/${customerData.customer.id}`);
+        const vouchersRes = await fetch(`/api/vouchers/customer/${customerData.customer.id}`);
         if (!vouchersRes.ok) {
           throw new Error("Failed to fetch vouchers");
         }
@@ -78,7 +80,8 @@ export default function LedgerPage() {
 
         // Process vouchers into ledger entries
         const entries: LedgerEntry[] = [];
-        let runningBalance = 0;
+        let runningGoldBalance = 0;
+        let runningKWDBalance = 0;
 
         // Sort vouchers by date
         const sortedVouchers = [...vouchersData.vouchers].sort(
@@ -90,36 +93,45 @@ export default function LedgerPage() {
           const description = rows.map((row: VoucherRow) => row.description).join(", ");
 
           if (voucher.voucherType === "INV") {
-            // INV (Invoice) - Debit (positive)
-            runningBalance += voucher.totalKWD;
+            // INV (Invoice) - Debit both gold and KWD
+            runningGoldBalance += voucher.totalNet;
+            runningKWDBalance += voucher.totalKWD;
             entries.push({
               date: new Date(voucher.date).toLocaleDateString(),
               voucherId: voucher.id,
               type: "INV",
               description: `Invoice - ${description}`,
-              debit: voucher.totalKWD,
-              credit: 0,
-              balance: runningBalance,
+              goldDebit: voucher.totalNet,
+              goldCredit: 0,
+              goldBalance: runningGoldBalance,
+              kwdDebit: voucher.totalKWD,
+              kwdCredit: 0,
+              kwdBalance: runningKWDBalance,
               pdfUrl: voucher.pdfUrl,
             });
           } else {
-            // REC (Receipt) - Credit (negative)
-            runningBalance -= voucher.totalKWD;
+            // REC (Receipt) - Credit both gold and KWD
+            runningGoldBalance -= voucher.totalNet;
+            runningKWDBalance -= voucher.totalKWD;
             entries.push({
               date: new Date(voucher.date).toLocaleDateString(),
               voucherId: voucher.id,
               type: "REC",
               description: `Receipt - ${description}`,
-              debit: 0,
-              credit: voucher.totalKWD,
-              balance: runningBalance,
+              goldDebit: 0,
+              goldCredit: voucher.totalNet,
+              goldBalance: runningGoldBalance,
+              kwdDebit: 0,
+              kwdCredit: voucher.totalKWD,
+              kwdBalance: runningKWDBalance,
               pdfUrl: voucher.pdfUrl,
             });
           }
         });
 
         setLedgerEntries(entries);
-        setCurrentBalance(runningBalance);
+        setCurrentGoldBalance(runningGoldBalance);
+        setCurrentKWDBalance(runningKWDBalance);
       } catch (err) {
         console.error("Error fetching ledger data:", err);
         setError(err instanceof Error ? err.message : "Failed to load ledger data");
@@ -132,8 +144,10 @@ export default function LedgerPage() {
   }, [id]);
 
   // Calculate totals
-  const totalDebit = ledgerEntries.reduce((sum, entry) => sum + entry.debit, 0);
-  const totalCredit = ledgerEntries.reduce((sum, entry) => sum + entry.credit, 0);
+  const totalGoldDebit = ledgerEntries.reduce((sum, entry) => sum + entry.goldDebit, 0);
+  const totalGoldCredit = ledgerEntries.reduce((sum, entry) => sum + entry.goldCredit, 0);
+  const totalKWDDebit = ledgerEntries.reduce((sum, entry) => sum + entry.kwdDebit, 0);
+  const totalKWDCredit = ledgerEntries.reduce((sum, entry) => sum + entry.kwdCredit, 0);
 
   if (loading) {
     return (
@@ -222,30 +236,53 @@ export default function LedgerPage() {
           </div>
         </div>
 
-        {/* Balance Summary */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+        {/* Balance Summary - Updated for Gold and KWD */}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+          <div className="bg-gradient-to-r from-yellow-500 to-yellow-600 text-white rounded-2xl p-6 text-center shadow-lg">
+            <p className="text-sm font-medium mb-2">Total Gold Debit</p>
+            <p className="text-2xl font-bold">{totalGoldDebit.toFixed(3)} g</p>
+          </div>
+          <div className="bg-gradient-to-r from-yellow-400 to-yellow-500 text-white rounded-2xl p-6 text-center shadow-lg">
+            <p className="text-sm font-medium mb-2">Total Gold Credit</p>
+            <p className="text-2xl font-bold">{totalGoldCredit.toFixed(3)} g</p>
+          </div>
           <div className="bg-gradient-to-r from-blue-500 to-blue-600 text-white rounded-2xl p-6 text-center shadow-lg">
-            <p className="text-sm font-medium mb-2">Total Debit</p>
-            <p className="text-3xl font-bold">{totalDebit.toFixed(3)} KWD</p>
+            <p className="text-sm font-medium mb-2">Total KWD Debit</p>
+            <p className="text-2xl font-bold">{totalKWDDebit.toFixed(3)} KWD</p>
           </div>
           <div className="bg-gradient-to-r from-green-500 to-green-600 text-white rounded-2xl p-6 text-center shadow-lg">
-            <p className="text-sm font-medium mb-2">Total Credit</p>
-            <p className="text-3xl font-bold">{totalCredit.toFixed(3)} KWD</p>
+            <p className="text-sm font-medium mb-2">Total KWD Credit</p>
+            <p className="text-2xl font-bold">{totalKWDCredit.toFixed(3)} KWD</p>
           </div>
+        </div>
+
+        {/* Current Balance Summary */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
           <div className={`rounded-2xl p-6 text-center shadow-lg ${
-            currentBalance >= 0 
+            currentGoldBalance >= 0 
               ? "bg-gradient-to-r from-purple-500 to-purple-600 text-white"
               : "bg-gradient-to-r from-red-500 to-red-600 text-white"
           }`}>
-            <p className="text-sm font-medium mb-2">Current Balance</p>
-            <p className="text-3xl font-bold">{currentBalance.toFixed(3)} KWD</p>
+            <p className="text-sm font-medium mb-2">Current Gold Balance</p>
+            <p className="text-3xl font-bold">{currentGoldBalance.toFixed(3)} g</p>
             <p className="text-sm mt-2 opacity-90">
-              {currentBalance >= 0 ? "Customer Owes You" : "You Owe Customer"}
+              {currentGoldBalance >= 0 ? "Customer Owes Gold" : "You Owe Gold"}
+            </p>
+          </div>
+          <div className={`rounded-2xl p-6 text-center shadow-lg ${
+            currentKWDBalance >= 0 
+              ? "bg-gradient-to-r from-indigo-500 to-indigo-600 text-white"
+              : "bg-gradient-to-r from-orange-500 to-orange-600 text-white"
+          }`}>
+            <p className="text-sm font-medium mb-2">Current KWD Balance</p>
+            <p className="text-3xl font-bold">{currentKWDBalance.toFixed(3)} KWD</p>
+            <p className="text-sm mt-2 opacity-90">
+              {currentKWDBalance >= 0 ? "Customer Owes KWD" : "You Owe KWD"}
             </p>
           </div>
         </div>
 
-        {/* Ledger Table */}
+        {/* Ledger Table - Updated for Gold and KWD */}
         <div className="bg-white rounded-2xl shadow-xl overflow-hidden">
           <div className="px-6 py-4 border-b border-gray-200">
             <div className="flex items-center justify-between">
@@ -279,13 +316,22 @@ export default function LedgerPage() {
                       Description
                     </th>
                     <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Debit (KWD)
+                      Gold Debit (g)
                     </th>
                     <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Credit (KWD)
+                      Gold Credit (g)
                     </th>
                     <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Balance (KWD)
+                      Gold Balance (g)
+                    </th>
+                    <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      KWD Debit
+                    </th>
+                    <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      KWD Credit
+                    </th>
+                    <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      KWD Balance
                     </th>
                     <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
                       Actions
@@ -293,7 +339,7 @@ export default function LedgerPage() {
                   </tr>
                 </thead>
                 <tbody className="bg-white divide-y divide-gray-200">
-                  {ledgerEntries.map((entry, index) => (
+                  {ledgerEntries.map((entry) => (
                     <tr key={entry.voucherId} className="hover:bg-gray-50 transition-colors duration-150">
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                         {entry.date}
@@ -310,16 +356,29 @@ export default function LedgerPage() {
                       <td className="px-6 py-4 text-sm text-gray-900 max-w-xs truncate">
                         {entry.description}
                       </td>
+                      {/* Gold Columns */}
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-right text-gray-900 font-mono">
-                        {entry.debit > 0 ? entry.debit.toFixed(3) : "-"}
+                        {entry.goldDebit > 0 ? entry.goldDebit.toFixed(3) : "-"}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-right text-gray-900 font-mono">
-                        {entry.credit > 0 ? entry.credit.toFixed(3) : "-"}
+                        {entry.goldCredit > 0 ? entry.goldCredit.toFixed(3) : "-"}
                       </td>
                       <td className={`px-6 py-4 whitespace-nowrap text-sm text-right font-mono font-semibold ${
-                        entry.balance >= 0 ? "text-blue-600" : "text-red-600"
+                        entry.goldBalance >= 0 ? "text-purple-600" : "text-red-600"
                       }`}>
-                        {entry.balance.toFixed(3)}
+                        {entry.goldBalance.toFixed(3)}
+                      </td>
+                      {/* KWD Columns */}
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-right text-gray-900 font-mono">
+                        {entry.kwdDebit > 0 ? entry.kwdDebit.toFixed(3) : "-"}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-right text-gray-900 font-mono">
+                        {entry.kwdCredit > 0 ? entry.kwdCredit.toFixed(3) : "-"}
+                      </td>
+                      <td className={`px-6 py-4 whitespace-nowrap text-sm text-right font-mono font-semibold ${
+                        entry.kwdBalance >= 0 ? "text-indigo-600" : "text-orange-600"
+                      }`}>
+                        {entry.kwdBalance.toFixed(3)}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
                         {entry.pdfUrl && (
@@ -344,16 +403,29 @@ export default function LedgerPage() {
                     <td colSpan={3} className="px-6 py-4 text-sm font-medium text-gray-900 text-right">
                       Totals:
                     </td>
+                    {/* Gold Totals */}
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-right text-gray-900 font-mono font-bold">
-                      {totalDebit.toFixed(3)}
+                      {totalGoldDebit.toFixed(3)}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-right text-gray-900 font-mono font-bold">
-                      {totalCredit.toFixed(3)}
+                      {totalGoldCredit.toFixed(3)}
                     </td>
                     <td className={`px-6 py-4 whitespace-nowrap text-sm text-right font-mono font-bold ${
-                      currentBalance >= 0 ? "text-blue-600" : "text-red-600"
+                      currentGoldBalance >= 0 ? "text-purple-600" : "text-red-600"
                     }`}>
-                      {currentBalance.toFixed(3)}
+                      {currentGoldBalance.toFixed(3)}
+                    </td>
+                    {/* KWD Totals */}
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-right text-gray-900 font-mono font-bold">
+                      {totalKWDDebit.toFixed(3)}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-right text-gray-900 font-mono font-bold">
+                      {totalKWDCredit.toFixed(3)}
+                    </td>
+                    <td className={`px-6 py-4 whitespace-nowrap text-sm text-right font-mono font-bold ${
+                      currentKWDBalance >= 0 ? "text-indigo-600" : "text-orange-600"
+                    }`}>
+                      {currentKWDBalance.toFixed(3)}
                     </td>
                     <td></td>
                   </tr>
