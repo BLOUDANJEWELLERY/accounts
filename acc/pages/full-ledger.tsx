@@ -201,21 +201,54 @@ export default function FullLedgerPage() {
       return matchesSearch && matchesDateRange && matchesCustomer && matchesType;
     })
     .sort((a, b) => {
-      let aValue: any = a[sortField];
-      let bValue: any = b[sortField];
+      let aValue: string | number | Date;
+      let bValue: string | number | Date;
 
-      // Handle nested fields
-      if (sortField === 'customer') {
-        aValue = a.customer.name;
-        bValue = b.customer.name;
+      // Handle nested fields and different data types
+      switch (sortField) {
+        case 'customer':
+          aValue = a.customer.name;
+          bValue = b.customer.name;
+          break;
+        case 'date':
+          aValue = new Date(a.date);
+          bValue = new Date(b.date);
+          break;
+        case 'type':
+          aValue = a.type;
+          bValue = b.type;
+          break;
+        case 'goldDebit':
+          aValue = a.goldDebit;
+          bValue = b.goldDebit;
+          break;
+        case 'goldCredit':
+          aValue = a.goldCredit;
+          bValue = b.goldCredit;
+          break;
+        case 'kwdDebit':
+          aValue = a.kwdDebit;
+          bValue = b.kwdDebit;
+          break;
+        case 'kwdCredit':
+          aValue = a.kwdCredit;
+          bValue = b.kwdCredit;
+          break;
+        default:
+          aValue = a[sortField];
+          bValue = b[sortField];
       }
 
-      // Handle date sorting
-      if (sortField === 'date') {
-        aValue = new Date(a.date);
-        bValue = new Date(b.date);
+      // Handle date comparison
+      if (aValue instanceof Date && bValue instanceof Date) {
+        if (sortDirection === "asc") {
+          return aValue.getTime() - bValue.getTime();
+        } else {
+          return bValue.getTime() - aValue.getTime();
+        }
       }
 
+      // Handle string and number comparison
       if (sortDirection === "asc") {
         return aValue > bValue ? 1 : -1;
       } else {
