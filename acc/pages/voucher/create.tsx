@@ -1,4 +1,5 @@
 import { useState, useEffect, ChangeEvent, FormEvent } from "react";
+import { useRouter } from "next/router";
 
 interface Customer {
   id: string;
@@ -9,20 +10,29 @@ interface Customer {
 interface InvoiceRow {
   description: string;
   weight: number;
-  purity?: number;          // INV only
+  purity: number;           // Now available for both INV and REC
   makingCharges?: number;   // INV only
   discountPercent?: number; // REC only
   netWeight: number;
+  weightAfterDiscount?: number; // REC only
   kwd: number;
 }
 
 type VoucherType = "INV" | "REC";
 
 export default function CreateVoucher() {
+  const router = useRouter();
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [accountId, setAccountId] = useState<string>("");
   const [voucherType, setVoucherType] = useState<VoucherType>("INV");
-  const [rows, setRows] = useState<InvoiceRow[]>([{ description: "", weight: 0, netWeight: 0, kwd: 0 }]);
+  const [date, setDate] = useState<string>(new Date().toISOString().split('T')[0]);
+  const [rows, setRows] = useState<InvoiceRow[]>([{ 
+    description: "", 
+    weight: 0, 
+    purity: 999, 
+    netWeight: 0, 
+    kwd: 0 
+  }]);
   const [loading, setLoading] = useState<boolean>(false);
   const [msg, setMsg] = useState<string>("");
 
@@ -47,26 +57,42 @@ export default function CreateVoucher() {
 
     // Live calculations
     if (voucherType === "INV") {
+      // Invoice calculations
       row.netWeight = row.weight && row.purity ? (row.weight * row.purity) / 999 : 0;
       row.kwd = row.weight && row.makingCharges ? row.weight * row.makingCharges : 0;
     } else {
-      row.netWeight = row.weight && row.discountPercent !== undefined ? row.weight * (1 - row.discountPercent / 100) : 0;
-      // kwd is manually entered
+      // Receipt calculations
+      const weightAfterDiscount = row.weight && row.discountPercent !== undefined ? 
+        row.weight * (1 - row.discountPercent / 100) : 0;
+      row.weightAfterDiscount = weightAfterDiscount;
+      row.netWeight = weightAfterDiscount && row.purity ? (weightAfterDiscount * row.purity) / 999 : 0;
+      // kwd is manually entered for REC
     }
 
     newRows[index] = row;
     setRows(newRows);
   };
 
-  const addRow = () => setRows([...rows, { description: "", weight: 0, netWeight: 0, kwd: 0 }]);
+  const addRow = () => setRows([...rows, { 
+    description: "", 
+    weight: 0, 
+    purity: 999, 
+    netWeight: 0, 
+    kwd: 0 
+  }]);
+  
   const removeRow = (index: number) => setRows(rows.filter((_, i) => i !== index));
 
   const totalNet = rows.reduce((acc, r) => acc + r.netWeight, 0);
   const totalKWD = rows.reduce((acc, r) => acc + r.kwd, 0);
+  const totalWeightAfterDiscount = rows.reduce((acc, r) => acc + (r.weightAfterDiscount || 0), 0);
 
   const handleSubmit = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    if (!accountId) return alert("Select account");
+    if (!accountId) {
+      setMsg("Please select a customer account");
+      return;
+    }
     setLoading(true);
 
     try {
@@ -79,22 +105,30 @@ export default function CreateVoucher() {
           rows,
           totalNet,
           totalKWD,
-          date: new Date(),
+          date,
         }),
       });
 
-      type VoucherResponse = { success: boolean; voucher?: unknown; error?: string };
+      type VoucherResponse = { 
+        success: boolean; 
+        voucher?: { id: string }; 
+        error?: string 
+      };
+      
       const data: VoucherResponse = await res.json();
 
       setLoading(false);
 
-      if (data.success) {
-        setMsg("Voucher created successfully!");
-        setRows([{ description: "", weight: 0, netWeight: 0, kwd: 0 }]);
+      if (data.success && data.voucher) {
+        setMsg("Voucher created successfully! Redirecting...");
+        // Redirect to signature page
+        setTimeout(() => {
+          router.push(`/voucher/signature/${data.voucher!.id}`);
+        }, 1500);
       } else {
         setMsg("Error: " + data.error);
       }
-    } catch {
+    } catch (error) {
       setLoading(false);
       setMsg("Unexpected error occurred");
     }
@@ -111,14 +145,14 @@ export default function CreateVoucher() {
             </svg>
           </div>
           <h1 className="text-4xl font-bold text-gray-900 mb-2">Create Voucher</h1>
-          <p className="text-lg text-gray-600">Generate invoices and receipts for your customers</p>
+          <p className="text-lg text-gray-600">Generate {voucherType === "INV" ? "invoices" : "receipts"} for your customers</p>
         </div>
 
         {/* Main Form Card */}
         <div className="bg-white rounded-2xl shadow-xl p-6 sm:p-8 mb-8">
           <form onSubmit={handleSubmit} className="space-y-6">
-            {/* Customer and Voucher Type Selection */}
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            {/* Customer, Voucher Type and Date Selection */}
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
               {/* Customer Selection */}
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">
@@ -164,38 +198,20 @@ export default function CreateVoucher() {
                   </select>
                 </div>
               </div>
-            </div>
 
-            {/* Voucher Type Info Card */}
-            <div className={`p-4 rounded-lg border-l-4 ${
-              voucherType === "INV" 
-                ? "bg-blue-50 border-blue-500" 
-                : "bg-green-50 border-green-500"
-            }`}>
-              <div className="flex items-center">
-                <div className={`w-8 h-8 rounded-full flex items-center justify-center mr-3 ${
-                  voucherType === "INV" ? "bg-blue-100" : "bg-green-100"
-                }`}>
-                  {voucherType === "INV" ? (
-                    <svg className="w-4 h-4 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                    </svg>
-                  ) : (
-                    <svg className="w-4 h-4 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                    </svg>
-                  )}
-                </div>
-                <div>
-                  <p className={`font-medium ${
-                    voucherType === "INV" ? "text-blue-800" : "text-green-800"
-                  }`}>
-                    {voucherType === "INV" 
-                      ? "Invoice Mode: Weight × Purity = Net Weight, Weight × Making Charges = KWD" 
-                      : "Receipt Mode: Weight - Discount % = Net Weight, KWD entered manually"
-                    }
-                  </p>
-                </div>
+              {/* Date Selection */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Date
+                  <span className="text-red-500 ml-1">*</span>
+                </label>
+                <input
+                  type="date"
+                  value={date}
+                  onChange={(e: ChangeEvent<HTMLInputElement>) => setDate(e.target.value)}
+                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all duration-200 outline-none"
+                  required
+                />
               </div>
             </div>
 
@@ -216,23 +232,25 @@ export default function CreateVoucher() {
               </div>
 
               {/* Table Headers */}
-              <div className="hidden lg:grid grid-cols-12 gap-4 mb-4 px-4 text-sm font-medium text-gray-700 uppercase tracking-wider">
+              <div className="hidden lg:grid grid-cols-13 gap-2 mb-4 px-2 text-sm font-medium text-gray-700 uppercase tracking-wider">
                 <div className="col-span-3">Description</div>
                 <div className="col-span-1">Weight</div>
                 {voucherType === "INV" ? (
                   <>
                     <div className="col-span-1">Purity</div>
                     <div className="col-span-1">Making Charges</div>
+                    <div className="col-span-2">Net Weight</div>
                     <div className="col-span-1">KWD</div>
                   </>
                 ) : (
                   <>
                     <div className="col-span-1">Discount %</div>
+                    <div className="col-span-1">Purity</div>
+                    <div className="col-span-2">Weight After Discount</div>
+                    <div className="col-span-2">Net Weight</div>
                     <div className="col-span-1">KWD</div>
-                    <div></div>
                   </>
                 )}
-                <div className="col-span-2">Net Weight</div>
                 <div className="col-span-1">Action</div>
               </div>
 
@@ -256,7 +274,8 @@ export default function CreateVoucher() {
                       )}
                     </div>
 
-                    <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 items-end">
+                    <div className={`grid grid-cols-1 ${voucherType === "INV" ? "lg:grid-cols-12" : "lg:grid-cols-13"} gap-2 items-end`}>
+                      
                       {/* Description */}
                       <div className="lg:col-span-3">
                         <label className="lg:hidden block text-sm font-medium text-gray-700 mb-1">Description</label>
@@ -265,7 +284,7 @@ export default function CreateVoucher() {
                           placeholder="Item description"
                           value={row.description}
                           onChange={(e: ChangeEvent<HTMLInputElement>) => handleRowChange(idx, "description", e.target.value)}
-                          className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all duration-200 outline-none"
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all duration-200 outline-none"
                           required
                         />
                       </div>
@@ -279,7 +298,7 @@ export default function CreateVoucher() {
                           step="0.001"
                           value={row.weight}
                           onChange={(e: ChangeEvent<HTMLInputElement>) => handleRowChange(idx, "weight", e.target.value)}
-                          className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all duration-200 outline-none"
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all duration-200 outline-none"
                           required
                         />
                       </div>
@@ -287,18 +306,21 @@ export default function CreateVoucher() {
                       {/* INV Fields */}
                       {voucherType === "INV" ? (
                         <>
+                          {/* Purity */}
                           <div className="lg:col-span-1">
                             <label className="lg:hidden block text-sm font-medium text-gray-700 mb-1">Purity</label>
                             <input
                               type="number"
                               placeholder="999"
                               step="1"
-                              value={row.purity ?? ""}
+                              value={row.purity}
                               onChange={(e: ChangeEvent<HTMLInputElement>) => handleRowChange(idx, "purity", e.target.value)}
-                              className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all duration-200 outline-none"
+                              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all duration-200 outline-none"
                               required
                             />
                           </div>
+
+                          {/* Making Charges */}
                           <div className="lg:col-span-1">
                             <label className="lg:hidden block text-sm font-medium text-gray-700 mb-1">Making Charges</label>
                             <input
@@ -307,10 +329,25 @@ export default function CreateVoucher() {
                               step="0.01"
                               value={row.makingCharges ?? ""}
                               onChange={(e: ChangeEvent<HTMLInputElement>) => handleRowChange(idx, "makingCharges", e.target.value)}
-                              className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all duration-200 outline-none"
+                              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all duration-200 outline-none"
                               required
                             />
                           </div>
+
+                          {/* Net Weight */}
+                          <div className="lg:col-span-2">
+                            <label className="lg:hidden block text-sm font-medium text-gray-700 mb-1">Net Weight</label>
+                            <input
+                              type="number"
+                              placeholder="0.000"
+                              step="0.001"
+                              value={row.netWeight.toFixed(3)}
+                              className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-gray-100 font-mono font-bold cursor-not-allowed"
+                              disabled
+                            />
+                          </div>
+
+                          {/* KWD */}
                           <div className="lg:col-span-1">
                             <label className="lg:hidden block text-sm font-medium text-gray-700 mb-1">KWD</label>
                             <input
@@ -318,7 +355,7 @@ export default function CreateVoucher() {
                               placeholder="0.00"
                               step="0.01"
                               value={row.kwd.toFixed(3)}
-                              className="w-full px-4 py-3 border border-gray-300 rounded-lg bg-gray-100 font-mono font-bold cursor-not-allowed"
+                              className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-gray-100 font-mono font-bold cursor-not-allowed"
                               disabled
                             />
                           </div>
@@ -326,6 +363,7 @@ export default function CreateVoucher() {
                       ) : (
                         /* REC Fields */
                         <>
+                          {/* Discount */}
                           <div className="lg:col-span-1">
                             <label className="lg:hidden block text-sm font-medium text-gray-700 mb-1">Discount %</label>
                             <input
@@ -334,10 +372,52 @@ export default function CreateVoucher() {
                               step="0.1"
                               value={row.discountPercent ?? ""}
                               onChange={(e: ChangeEvent<HTMLInputElement>) => handleRowChange(idx, "discountPercent", e.target.value)}
-                              className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all duration-200 outline-none"
+                              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all duration-200 outline-none"
                               required
                             />
                           </div>
+
+                          {/* Purity */}
+                          <div className="lg:col-span-1">
+                            <label className="lg:hidden block text-sm font-medium text-gray-700 mb-1">Purity</label>
+                            <input
+                              type="number"
+                              placeholder="999"
+                              step="1"
+                              value={row.purity}
+                              onChange={(e: ChangeEvent<HTMLInputElement>) => handleRowChange(idx, "purity", e.target.value)}
+                              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all duration-200 outline-none"
+                              required
+                            />
+                          </div>
+
+                          {/* Weight After Discount */}
+                          <div className="lg:col-span-2">
+                            <label className="lg:hidden block text-sm font-medium text-gray-700 mb-1">Weight After Discount</label>
+                            <input
+                              type="number"
+                              placeholder="0.000"
+                              step="0.001"
+                              value={row.weightAfterDiscount?.toFixed(3) || "0.000"}
+                              className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-gray-100 font-mono font-bold cursor-not-allowed"
+                              disabled
+                            />
+                          </div>
+
+                          {/* Net Weight */}
+                          <div className="lg:col-span-2">
+                            <label className="lg:hidden block text-sm font-medium text-gray-700 mb-1">Net Weight</label>
+                            <input
+                              type="number"
+                              placeholder="0.000"
+                              step="0.001"
+                              value={row.netWeight.toFixed(3)}
+                              className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-gray-100 font-mono font-bold cursor-not-allowed"
+                              disabled
+                            />
+                          </div>
+
+                          {/* KWD */}
                           <div className="lg:col-span-1">
                             <label className="lg:hidden block text-sm font-medium text-gray-700 mb-1">KWD</label>
                             <input
@@ -346,26 +426,12 @@ export default function CreateVoucher() {
                               step="0.01"
                               value={row.kwd}
                               onChange={(e: ChangeEvent<HTMLInputElement>) => handleRowChange(idx, "kwd", e.target.value)}
-                              className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all duration-200 outline-none"
+                              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all duration-200 outline-none"
                               required
                             />
                           </div>
-                          <div className="lg:col-span-1"></div> {/* Spacer */}
                         </>
                       )}
-
-                      {/* Net Weight */}
-                      <div className="lg:col-span-2">
-                        <label className="lg:hidden block text-sm font-medium text-gray-700 mb-1">Net Weight</label>
-                        <input
-                          type="number"
-                          placeholder="0.000"
-                          step="0.001"
-                          value={row.netWeight.toFixed(3)}
-                          className="w-full px-4 py-3 border border-gray-300 rounded-lg bg-gray-100 font-mono font-bold cursor-not-allowed"
-                          disabled
-                        />
-                      </div>
 
                       {/* Remove Button - Desktop */}
                       <div className="lg:col-span-1 hidden lg:flex justify-center">
@@ -373,9 +439,9 @@ export default function CreateVoucher() {
                           <button
                             type="button"
                             onClick={() => removeRow(idx)}
-                            className="w-10 h-10 bg-red-500 text-white rounded-full flex items-center justify-center hover:bg-red-600 transition-colors duration-200 shadow-lg hover:shadow-xl transform hover:scale-105"
+                            className="w-8 h-8 bg-red-500 text-white rounded-full flex items-center justify-center hover:bg-red-600 transition-colors duration-200 shadow-lg hover:shadow-xl transform hover:scale-105"
                           >
-                            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
                             </svg>
                           </button>
@@ -389,14 +455,26 @@ export default function CreateVoucher() {
 
             {/* Totals Section */}
             <div className="bg-gradient-to-r from-indigo-50 to-purple-50 rounded-xl p-6 border border-indigo-200">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className={`grid ${voucherType === "INV" ? "grid-cols-1 md:grid-cols-2" : "grid-cols-1 md:grid-cols-3"} gap-4`}>
                 <div className="text-center">
-                  <p className="text-sm font-medium text-gray-600 mb-1">Total Net Weight</p>
-                  <p className="text-3xl font-bold text-indigo-700">{totalNet.toFixed(3)}</p>
+                  <p className="text-sm font-medium text-gray-600 mb-1">
+                    {voucherType === "INV" ? "Total Net Weight" : "Total Weight After Discount"}
+                  </p>
+                  <p className="text-2xl font-bold text-indigo-700">
+                    {voucherType === "INV" ? totalNet.toFixed(3) : totalWeightAfterDiscount.toFixed(3)}
+                  </p>
                 </div>
+                
+                {voucherType === "REC" && (
+                  <div className="text-center">
+                    <p className="text-sm font-medium text-gray-600 mb-1">Total Net Weight</p>
+                    <p className="text-2xl font-bold text-purple-700">{totalNet.toFixed(3)}</p>
+                  </div>
+                )}
+                
                 <div className="text-center">
                   <p className="text-sm font-medium text-gray-600 mb-1">Total KWD</p>
-                  <p className="text-3xl font-bold text-purple-700">{totalKWD.toFixed(3)}</p>
+                  <p className="text-2xl font-bold text-green-600">{totalKWD.toFixed(3)}</p>
                 </div>
               </div>
             </div>
@@ -426,6 +504,8 @@ export default function CreateVoucher() {
             <div className={`mt-6 p-4 rounded-lg text-center font-medium ${
               msg.includes("successfully") 
                 ? "bg-green-50 text-green-700 border border-green-200" 
+                : msg.includes("Redirecting")
+                ? "bg-blue-50 text-blue-700 border border-blue-200"
                 : "bg-red-50 text-red-700 border border-red-200"
             }`}>
               {msg}
